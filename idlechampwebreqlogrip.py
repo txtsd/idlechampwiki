@@ -29,6 +29,20 @@ js_reset_tier_defines = js['defines']['reset_tier_defines']
 js_reset_upgrade_defines = js['defines']['reset_upgrade_defines']
 
 
+#  For single adventure files
+per_adventure_adventure_defines = []
+per_adventure_adventure_area_defines = []
+per_adventure_background_defines = []
+per_adventure_campaign_defines = []
+per_adventure_location_defines = []
+per_adventure_monster_defines = []
+per_adventure_quest_defines = []
+per_adventure_cinematics_defines = []
+per_adventure_distraction_defines = []
+per_adventure_reset_currency_defines = []
+per_adventure_reset_tier_defines = []
+per_adventure_reset_upgrade_defines = []
+
 # Read files and load data
 adventure_defines = []
 with open('json/{file}.json'.format(file='adventure_defines'), 'r') as f:
@@ -72,72 +86,84 @@ with open('json/{file}.json'.format(file='reset_upgrade_defines'), 'r') as f:
 for item in js_adventure_defines:
     if item not in adventure_defines:
         adventure_defines.append(item)
+    per_adventure_adventure_defines.append(item)
 with open('json/{file}.json'.format(file='adventure_defines'), 'w+') as f:
     f.write(json.dumps(adventure_defines))
 
 for item in js_adventure_area_defines:
     if item not in adventure_area_defines:
         adventure_area_defines.append(item)
+    per_adventure_adventure_area_defines.append(item)
 with open('json/{file}.json'.format(file='adventure_area_defines'), 'w+') as f:
     f.write(json.dumps(adventure_area_defines))
 
 for item in js_background_defines:
     if item not in background_defines:
         background_defines.append(item)
+    per_adventure_background_defines.append(item)
 with open('json/{file}.json'.format(file='background_defines'), 'w+') as f:
     f.write(json.dumps(background_defines))
 
 for item in js_campaign_defines:
     if item not in campaign_defines:
         campaign_defines.append(item)
+    per_adventure_campaign_defines.append(item)
 with open('json/{file}.json'.format(file='campaign_defines'), 'w+') as f:
     f.write(json.dumps(campaign_defines))
 
 for item in js_location_defines:
     if item not in location_defines:
         location_defines.append(item)
+    per_adventure_location_defines.append(item)
 with open('json/{file}.json'.format(file='location_defines'), 'w+') as f:
     f.write(json.dumps(location_defines))
 
 for item in js_monster_defines:
     if item not in monster_defines:
         monster_defines.append(item)
+    per_adventure_monster_defines.append(item)
 with open('json/{file}.json'.format(file='monster_defines'), 'w+') as f:
     f.write(json.dumps(monster_defines))
 
 for item in js_quest_defines:
     if item not in quest_defines:
         quest_defines.append(item)
+    per_adventure_quest_defines.append(item)
 with open('json/{file}.json'.format(file='quest_defines'), 'w+') as f:
     f.write(json.dumps(quest_defines))
 
 for item in js_cinematics_defines:
     if item not in cinematics_defines:
         cinematics_defines.append(item)
+    per_adventure_cinematics_defines.append(item)
 with open('json/{file}.json'.format(file='cinematics_defines'), 'w+') as f:
     f.write(json.dumps(cinematics_defines))
 
 for item in js_distraction_defines:
     if item not in distraction_defines:
         distraction_defines.append(item)
+    per_adventure_distraction_defines.append(item)
 with open('json/{file}.json'.format(file='distraction_defines'), 'w+') as f:
     f.write(json.dumps(distraction_defines))
 
 for item in js_reset_currency_defines:
     if item not in reset_currency_defines:
         reset_currency_defines.append(item)
+    per_adventure_reset_currency_defines.append(item)
 with open('json/{file}.json'.format(file='reset_currency_defines'), 'w+') as f:
     f.write(json.dumps(reset_currency_defines))
 
 for item in js_reset_tier_defines:
     if item not in reset_tier_defines:
         reset_tier_defines.append(item)
+    per_adventure_reset_tier_defines.append(item)
 with open('json/{file}.json'.format(file='reset_tier_defines'), 'w+') as f:
     f.write(json.dumps(reset_tier_defines))
 
 for item in js_reset_upgrade_defines:
     if item not in reset_upgrade_defines:
         reset_upgrade_defines.append(item)
+    per_adventure_reset_upgrade_defines.append(item)
 with open('json/{file}.json'.format(file='reset_upgrade_defines'), 'w+') as f:
     f.write(json.dumps(reset_upgrade_defines))
 
@@ -148,18 +174,18 @@ if js_adventure_defines[0]['name'] == 'Free Play':
 else:
     per_adventure_filename = js_adventure_defines[0]['name'] + '.json'
 per_adventure_json = []
-per_adventure_json.append({'adventure_defines': adventure_defines})
-per_adventure_json.append({'adventure_area_defines': adventure_area_defines})
-per_adventure_json.append({'background_defines': background_defines})
-per_adventure_json.append({'campaign_defines': campaign_defines})
-per_adventure_json.append({'location_defines': location_defines})
-per_adventure_json.append({'monster_defines': monster_defines})
-per_adventure_json.append({'quest_defines': quest_defines})
-per_adventure_json.append({'cinematics_defines': cinematics_defines})
-per_adventure_json.append({'distraction_defines': distraction_defines})
-per_adventure_json.append({'reset_currency_defines': reset_currency_defines})
-per_adventure_json.append({'reset_tier_defines': reset_tier_defines})
-per_adventure_json.append({'reset_upgrade_defines': reset_upgrade_defines})
+per_adventure_json.append({'adventure_defines': per_adventure_adventure_defines})
+per_adventure_json.append({'adventure_area_defines': per_adventure_adventure_area_defines})
+per_adventure_json.append({'background_defines': per_adventure_background_defines})
+per_adventure_json.append({'campaign_defines': per_adventure_campaign_defines})
+per_adventure_json.append({'location_defines': per_adventure_location_defines})
+per_adventure_json.append({'monster_defines': per_adventure_monster_defines})
+per_adventure_json.append({'quest_defines': per_adventure_quest_defines})
+per_adventure_json.append({'cinematics_defines': per_adventure_cinematics_defines})
+per_adventure_json.append({'distraction_defines': per_adventure_distraction_defines})
+per_adventure_json.append({'reset_currency_defines': per_adventure_reset_currency_defines})
+per_adventure_json.append({'reset_tier_defines': per_adventure_reset_tier_defines})
+per_adventure_json.append({'reset_upgrade_defines': per_adventure_reset_upgrade_defines})
 
-with open('json/{file}'.format(file=per_adventure_filename), 'w+') as f:
+with open('json/__{file}'.format(file=per_adventure_filename), 'w+') as f:
     f.write(json.dumps(per_adventure_json))
