@@ -46,14 +46,14 @@ Familiars are small creatures that can be purchased with either real money, or g
 
 They get unlocked after having reached area 66 in any campaign.
 
-== Clickrates ==
+==Clickrates==
 
 \'\'\'Clicking Monsters - 5 clicks per second\'\'\'
 *Up to six familiars can be assigned to clicking at a time.
 *If 3 or more are assigned, they will automatically pickup gold, quest items, event items, and the contents of the gem bag.
 *If 5 or more are assigned, they will automatically open the gem bag.
 *If 6 are assigned, they will automatically click distractions.
-*Familiars assigned to this task will always attack the frontmost enemy, as long as it is possible to deal damage to it via clicks (i.e. not log barricades  or bosses with segmented health).
+*Familiars assigned to this task will always attack the frontmost enemy, as long as it is possible to deal damage to it via clicks (i.e. not log barricades or bosses with segmented health).
 
 \'\'\'Leveling Champions - 1 click per second\'\'\'
 *One familiar can be assigned per champion.
@@ -66,8 +66,7 @@ They get unlocked after having reached area 66 in any campaign.
 {familiar_list}
 
 {{{{Navbox-IdleChampions}}}}
-[[Category:Game Mechanics]]
-'''
+[[Category:Game Mechanics]]'''
 
 familiar_text = ''
 
