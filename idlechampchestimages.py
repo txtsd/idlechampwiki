@@ -17,9 +17,9 @@ import tempfile
 
 
 COMPARE = True
-POST = True
-REDOWNLOAD = True
+POST = False
 PROCESS = True
+REDOWNLOAD = False
 _summary = None
 
 if POST:
@@ -94,7 +94,7 @@ for chest in js_chest_type:
         if chest['id'] == 112:
             name += ' (Ishi)'
         print(chest['id'], chest['name'])
-        if (not 'Gold E1' in name) and (not 'Silver E1' in name):
+        if not re.search('E\d', name):
             imgid = chest['graphic_id']
             for gfx in js_graphic:
                 if imgid == gfx['id']:
