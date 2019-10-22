@@ -1,5 +1,6 @@
 import requests
 import urllib
+import os
 from pprint import pprint
 
 
@@ -28,8 +29,8 @@ class ICAccount:
     }
 
     def __init__(self):
-        self.un = 'Txtsd8313@IC_Parse_Uploader'
-        self.pw = 'vlsl03nb0qqmubt0g4pik48je0bubi0k'
+        self.un = os.environ['IDLEWIKIUSER']
+        self.pw = os.environ['IDLEWIKIPASS']
         self.result = None
         self.S = requests.Session()
         self.S.headers = {'User-Agent': 'IC_Parse_Uploader'}
@@ -40,11 +41,12 @@ class ICAccount:
         R = self.S.get(ICAccount.API_URL, params=_param)
         return R
 
-    def post(self, data={}, param={}, head={}):
+    def post(self, data={}, param={}, head={}, files={}):
         _param = param
         _param.update(ICAccount.PARAMS_0)
         _param = urllib.parse.urlencode(_param)
         _data = data
+        _files = files
 
         _R = self.S.get(url=ICAccount.API_URL, params=ICAccount.PARAMS_2)
         DATA = _R.json()
@@ -53,7 +55,10 @@ class ICAccount:
         _data.update({'token': LOGIN_TOKEN})
         # _head = head
         # _head.update({'Content-Type': 'application/x-www-form-urlencoded'})
-        R = self.S.post(ICAccount.API_URL, params=_param, data=_data)
+        if files == {}:
+            R = self.S.post(ICAccount.API_URL, params=_param, data=_data)
+        else:
+            R = self.S.post(ICAccount.API_URL, params=_param, data=_data, files=_files)
         return R
 
     def login(self):

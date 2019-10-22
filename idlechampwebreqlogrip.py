@@ -7,11 +7,13 @@ from decimal import Decimal
 from idlechampaccount import ICAccount
 
 webreqlog_path = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/webRequestLog.txt'
+# webreqlog_path = '/tmp/webRequestLog.txt'
 
 with open(webreqlog_path) as f:
     webreqlog = f.read()
 
 search = re.search('({"success":true,"details":{.*})', webreqlog)
+# search = re.search('{"success":true,"graphic_defines":[.*', webreqlog)
 
 js = json.loads(search.group())
 
@@ -27,6 +29,13 @@ js_distraction_defines = js['defines']['distraction_defines']
 js_reset_currency_defines = js['defines']['reset_currency_defines']
 js_reset_tier_defines = js['defines']['reset_tier_defines']
 js_reset_upgrade_defines = js['defines']['reset_upgrade_defines']
+if 'challenge_set_defines' in js['defines']:
+    js_challenge_set_defines = js['defines']['challenge_set_defines']
+
+js_time_gates = json.loads('[' + json.dumps(js['details']['time_gates']) + ']')
+js_event_details = js['details']['event_details']
+js_package_deals = js['details']['package_deals']
+js_promotions = js['details']['promotions']
 
 
 #  For single adventure files
@@ -42,6 +51,12 @@ per_adventure_distraction_defines = []
 per_adventure_reset_currency_defines = []
 per_adventure_reset_tier_defines = []
 per_adventure_reset_upgrade_defines = []
+per_adventure_challenge_set_defines = []
+
+per_adventure_time_gates = []
+per_adventure_event_details = []
+per_adventure_package_deals = []
+per_adventure_promotions = []
 
 # Read files and load data
 adventure_defines = []
@@ -80,6 +95,23 @@ with open('json/{file}.json'.format(file='reset_tier_defines'), 'r') as f:
 reset_upgrade_defines = []
 with open('json/{file}.json'.format(file='reset_upgrade_defines'), 'r') as f:
     reset_upgrade_defines = json.loads(f.read())
+challenge_set_defines = []
+if 'challenge_set_defines' in js['defines']:
+    with open('json/{file}.json'.format(file='challenge_set_defines'), 'r') as f:
+        challenge_set_defines = json.loads(f.read())
+
+time_gates = []
+with open('json/{file}.json'.format(file='time_gates'), 'r') as f:
+    time_gates = json.loads(f.read())
+event_details = []
+with open('json/{file}.json'.format(file='event_details'), 'r') as f:
+    event_details = json.loads(f.read())
+package_deals = []
+with open('json/{file}.json'.format(file='package_deals'), 'r') as f:
+    package_deals = json.loads(f.read())
+promotions = []
+with open('json/{file}.json'.format(file='promotions'), 'r') as f:
+    promotions = json.loads(f.read())
 
 
 # Write old + new data to files
@@ -167,6 +199,42 @@ for item in js_reset_upgrade_defines:
 with open('json/{file}.json'.format(file='reset_upgrade_defines'), 'w+') as f:
     f.write(json.dumps(reset_upgrade_defines))
 
+for item in js_challenge_set_defines:
+    if item not in challenge_set_defines:
+        challenge_set_defines.append(item)
+    per_adventure_challenge_set_defines.append(item)
+with open('json/{file}.json'.format(file='challenge_set_defines'), 'w+') as f:
+    f.write(json.dumps(challenge_set_defines))
+
+
+for item in js_time_gates:
+    if item not in time_gates:
+        time_gates.append(item)
+    per_adventure_time_gates.append(item)
+with open('json/{file}.json'.format(file='time_gates'), 'w+') as f:
+    f.write(json.dumps(time_gates))
+
+for item in js_event_details:
+    if item not in event_details:
+        event_details.append(item)
+    per_adventure_event_details.append(item)
+with open('json/{file}.json'.format(file='event_details'), 'w+') as f:
+    f.write(json.dumps(event_details))
+
+for item in js_package_deals:
+    if item not in package_deals:
+        package_deals.append(item)
+    per_adventure_package_deals.append(item)
+with open('json/{file}.json'.format(file='package_deals'), 'w+') as f:
+    f.write(json.dumps(package_deals))
+
+for item in js_promotions:
+    if item not in promotions:
+        promotions.append(item)
+    per_adventure_promotions.append(item)
+with open('json/{file}.json'.format(file='promotions'), 'w+') as f:
+    f.write(json.dumps(promotions))
+
 
 # Store all data in an adventure file separately
 if js_adventure_defines[0]['name'] == 'Free Play':
@@ -186,6 +254,11 @@ per_adventure_json.append({'distraction_defines': per_adventure_distraction_defi
 per_adventure_json.append({'reset_currency_defines': per_adventure_reset_currency_defines})
 per_adventure_json.append({'reset_tier_defines': per_adventure_reset_tier_defines})
 per_adventure_json.append({'reset_upgrade_defines': per_adventure_reset_upgrade_defines})
+
+per_adventure_json.append({'time_gates': per_adventure_time_gates})
+per_adventure_json.append({'event_details': per_adventure_event_details})
+per_adventure_json.append({'package_deals': per_adventure_package_deals})
+per_adventure_json.append({'promotions': per_adventure_promotions})
 
 with open('json/__{file}'.format(file=per_adventure_filename), 'w+') as f:
     f.write(json.dumps(per_adventure_json))

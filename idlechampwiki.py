@@ -4,10 +4,17 @@ import re
 from collections import OrderedDict
 import math
 from decimal import Decimal
+import html
 from idlechampaccount import ICAccount
+import subprocess
+import filecmp
+import os
+import requests
+import tempfile
 
-API = True
-POST = True
+COMPARE = True
+POST = False
+REDOWNLOAD = False
 SHOW_CHANGES = False
 _summary = None
 
@@ -17,16 +24,28 @@ PRINT_MISSING_ROWS = False
 PRINT_MULTIPLE_ABILTIES = False
 PRINT_REQUIRED_ABILTIES = False
 
-if API:
+if POST:
     instance = ICAccount()
     instance.login()
 
-filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+
+# filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+filename = '/tmp/cached_definitions.json'
+if REDOWNLOAD or not os.path.isfile(filename):
+    result = requests.get('http://master.idlechampions.com/~idledragons/post.php?call=getdefinitions')
+    with open(filename, 'w') as f:
+        if result.status_code == 200:
+            # text = result.text
+            # text = re.sub('\\u00fb', 'û', text)
+            # text = re.sub('\\u00a9', '©', text)
+            # f.write(text)
+            f.write(result.text)
+            # f.write(result.text.encode('utf-8').decode('unicode-escape'))
 
 with open(filename) as f:
     file = f.read()
 
-js = json.loads(file)
+js = json.loads(html.unescape(file))
 
 js_graphic = js['graphic_defines']
 js_attack = js['attack_defines']
@@ -64,10 +83,10 @@ for effect in js_upgrade:
 breakout = 0
 
 for hero in js_hero:
-    if not hero['name'][:2] == 'E1':
+    if not re.search('^E\d', hero['name']):
         champ_str = '''
 {{{{Champion
-| name = {{{{SUBJECTPAGENAME}}}}
+| name = {{{{SUBJECTPAGENAME}}}}{skin}
 | class = {class_}
 | race = {race}
 | age  = {age}
@@ -83,7 +102,7 @@ for hero in js_hero:
 | swap3 = {swap3}
 | swap4 = {swap4}
 }}}}
-\'\'\'{fullname}\'\'\' is one of the champions of [[Idle Champions of the Forgotten Realms]].{extra_info}
+\'\'\'{fullname}\'\'\' is one of the [[champions]] of [[Idle Champions of the Forgotten Realms]].{extra_info}
 
 ==Backstory==
 {{{{Quote|{backstory}}}}}
@@ -107,7 +126,17 @@ for hero in js_hero:
 
         # Basic information
         id_ = hero['id']
+        # if id_ in [2, 25]:
+        #     continue
         name = hero['name']
+        skinnames = []
+        for skin in js_hero_skin:
+            if hero['id'] == skin['hero_id']:
+                skinnames.append(skin['name'])
+        skin = ''
+        if not len(skinnames) == 0:
+            for enum, skinname in enumerate(skinnames):
+                skin += ('\n' + '| skin' + str(enum + 1) + ' = ' + skinname)
         _class = hero['character_sheet_details']['class']
         _race = hero['character_sheet_details']['race']
         _age = hero['character_sheet_details']['age']
@@ -167,19 +196,19 @@ for hero in js_hero:
         elif name == 'Nrakk':
             extra_info = ' He is obtained from the [[Greengrass]] Event.'
         elif name == 'Catti-brie':
-            extra_info = ' She is obtained from the [[The Running]] Event.'
+            extra_info = ' She is obtained from [[The Running]] Event.'
         elif name == 'Evelyn':
-            extra_info = ' She is obtained from the [[The Great Modron March]] Event.'
+            extra_info = ' She is obtained from [[The Great Modron March]] Event.'
         elif name == 'Binwin':
             extra_info = ' He is obtained from the [[Dragondown]] Event.'
         elif name == 'Deekin':
-            extra_info = ' He is obtained from the [[Founders Day]] Event.'
+            extra_info = ' He is obtained from the [[Founder\'s Day]] Event.'
         elif name == 'Diath':
             extra_info = ' He is obtained from the [[Midsummer]] Event.'
         elif name == 'Azaka':
             extra_info = ' She is obtained as reward of the [[Azaka\'s Procession]] [[Variants|Variant]] of the [[Tomb of the Nine Gods]] [[Adventures|Adventure]].'
         elif name == 'Ishi':
-            extra_info = ' She is obtained from the [[Ahghairons\'s Day]] Event.'
+            extra_info = ' She is obtained from the [[Ahghairon\'s Day]] Event.'
         elif name == 'Wulfgar':
             extra_info = ' He is obtained from the [[Brightswords]] Event.'
         elif name == 'Farideh':
@@ -202,6 +231,16 @@ for hero in js_hero:
             extra_info = ' She is obtained from the [[Festival of Fools]] Event.'
         elif name == 'Aila':
             extra_info = ' She is obtained from the [[Greengrass]] Event.'
+        elif name == 'Spurt':
+            extra_info = ' He is obtained from [[The Running]] Event.'
+        elif name == 'Qillek':
+            extra_info = ' He is obtained from [[The Great Modron March]] Event.'
+        elif name == 'Korth':
+            extra_info = ' He is obtained from the [[Dragondown]] Event.'
+        elif name == 'Walnut':
+            extra_info = ' She is obtained from the [[Founder\'s Day]] Event.'
+        # elif name == 'Walnut':
+        #     extra_info = ''
 
         if not system_desc == '':
             extra_info += '\n\n{system_desc}'.format(system_desc=system_desc)
@@ -235,7 +274,7 @@ for hero in js_hero:
         # Swaps
         _swap = []
         for _hero in js_hero:
-            if not _hero['name'][:2] == 'E1':
+            if not re.search('^E\d', _hero['name']):
                 if _hero['seat_id'] == hero['seat_id']:
                     if not _hero['id'] == hero['id']:
                         _swap.append(_hero['name'])
@@ -455,6 +494,66 @@ for hero in js_hero:
 
 {spec_desc_7}
 '''
+        elif name == 'Wulfgar':
+            abilities = '''
+\'\'\'{a_base} - Base Attack\'\'\'
+
+{a_base_desc}
+{gained_abilities}
+\'\'\'{a_ult} - Ultimate Attack\'\'\'
+
+{a_ult_desc}
+
+===Specialization Choices===
+
+\'\'\'{{{{Spec|{spec_1}}}}}\'\'\'
+
+{spec_desc_1}
+
+\'\'\'{{{{Spec|{spec_2}}}}}\'\'\'
+
+{spec_desc_2}
+
+\'\'\'{{{{Spec|{spec_3}}}}}\'\'\'
+
+{spec_desc_3}
+'''
+        elif name == 'Walnut':
+            abilities = '''
+\'\'\'{a_base} - Base Attack\'\'\'
+
+{a_base_desc}
+{gained_abilities}
+\'\'\'{a_ult} - Ultimate Attack\'\'\'
+
+{a_ult_desc}
+
+===Specialization Choices===
+
+\'\'\'<u>Specialization Choice 1</u>\'\'\'
+
+\'\'\'{{{{Spec|{spec_1}}}}}\'\'\'
+
+{spec_desc_1}
+
+\'\'\'{{{{Spec|{spec_2}}}}}\'\'\'
+
+{spec_desc_2}
+
+\'\'\'{{{{Spec|{spec_3}}}}}\'\'\'
+
+{spec_desc_3}
+
+\'\'\'<u>Specialization Choice 2</u>\'\'\'
+
+\'\'\'{{{{Spec|{spec_4}}}}}\'\'\'
+
+{spec_desc_4}
+
+\'\'\'{{{{Spec|{spec_5}}}}}\'\'\'
+
+{spec_desc_5}
+'''
         else:
             abilities = '''
 \'\'\'{a_base} - Base Attack\'\'\'
@@ -628,6 +727,8 @@ for hero in js_hero:
                 effect = effect['effect_string']
             if isinstance(effect, str):
                 # print(effect)
+                if len(effect.split(',')) == 1:
+                    effect_key = effect
                 if len(effect.split(',')) == 2:
                     # print('2', effect)
                     effect_key = effect.split(',')[0]
@@ -706,353 +807,217 @@ for hero in js_hero:
                                 ]
                             ):
                                 unit = ' sec'
-                            for item in effect['effect_keys']:
-                                effect_string = item['effect_string']
-                                break
-                            if effect_id == '175':
-                                desc = desc\
-                                    .replace('$azaka_attacks', '{azaka_attacks}')\
-                                    .replace('$azaka_time', '{azaka_time}')\
-                                    .replace('$amount', '{amount}')\
-                                    .replace('$weretiger_description', '{weretiger_description}')
-                                azaka_attacks = effect_string.split(',')[3]
-                                azaka_time = effect_string.split(',')[2]
-                                amount = effect_string.split(',')[1]
-                                weretiger_description = ''
-                                desc = desc.format(
-                                    azaka_attacks=azaka_attacks,
-                                    azaka_time=azaka_time,
-                                    amount=amount,
-                                    weretiger_description=weretiger_description,
-                                )
-                            if effect_id == '47':
-                                __effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = __effect['desc']
-                            if effect_id == '220':
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount___2', __effect['amount'])\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(targets_desc_plural targets)', 'Champions in the same column as Barrowin')
-                            if effect_id == '221':
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$(time_str amount)', _effect['amount'] + ' second')
-                            if effect_id == '111':
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$gain_percent', _effect['gain'])\
-                                    .replace('$lose_percent', _effect['lose'])\
-                                    .replace('$wait_time', _effect['wait'])
-                            if effect_id == '140':
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = _effect['desc']
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$start_percent', _effect['start'])\
-                                    .replace('$end_percent', _effect['end'])
-                            if effect_id == '141':
-                                desc = desc\
-                                    .replace('$amount', str(effect['effect_keys'][0]['effect_string'].split(',')[1]))\
-                                    .replace('$seconds', str(effect['effect_keys'][0]['seconds']))\
-                                    .replace('$hits', str(effect['effect_keys'][0]['hits']))\
-                                    .replace('$(value stun_time)', str(effect['effect_keys'][0]['stun_time']))
-                            if effect_id == '158':  # Evelyn
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '145':  # Evelyn
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '147':  # Evelyn
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', effect['effect_keys'][0]['effect_string'].split(',')[1])
-                            if effect_id == '149':  # Evelyn
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(upgrade_name id)', _effect['name'])
-                            if effect_id == '241':  # Evelyn
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '160':  # Binwin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(binwin_odds_buff base_odds)', _effect['base_odds'])\
-                                    .replace('$cooldown_added', _effect['cooldown_added'])\
-                                    .replace('$reduce_odds', _effect['reduce_odds'])
-                            if effect_id == '165':  # Deekin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$upgrade_base_stack', _effect['amount'])\
-                                    .replace('$(if not upgrade_purchased 1152)Adjacent$(or)All$(fi)', 'Adjacent')\
-                                    .replace('$only_when_purchased^(Current Stacks: $upgrade_stacks)', '')
-                            if effect_id == '166':  # Deekin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '168':  # Deekin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$(not_buffed amount)', _effect['amount'])
-                            if effect_id == '176':  # Azaka
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$(not_buffed amount)', _effect['amount'])
-                            if effect_id == '178':  # Azaka
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '177':  # Azaka
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$(not_buffed amount)', _effect['amount'])
-                            if effect_id == '182':  # Ishi
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '183':  # Ishi
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '209':  # Farideh
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(if upgrade_purchased 1550) or Champions within 2 slots distance of $target$(elif upgrade_purchased 1548) or Champions adjacent to $target$(fi)', '')
-                            if effect_id == '211':  # Farideh
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '226':  # Donaar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$for_time', str(effect['effect_keys'][0]['for_time']))
-                            if effect_id == '227':  # Donaar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '264':  # K'thriss
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount___2', __effect['amount'])\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace(' $hordesperson_description', '')
-                            if effect_id == '265':  # K'thriss
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace(' $hordesperson_description', '')
-                            if effect_id == '205':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '199':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$cap_percent', _effect['cap_percent'])
-                            if effect_id == '204':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount___2', __effect['amount'])\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '200':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '201':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '202':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '203':  # Wulfgar
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                # Could be a bug that description only uses 1 $amount var
-                                desc = desc\
-                                    .replace('$amount', __effect['amount'])
-                            if effect_id == '233':  # Vlahnya
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                # pprint(effect)
-                                # print(_effect)
-                                # print(_effect['ids'])
-                                attack_names = []
-                                for __id in _effect['ids'].split(','):
-                                    for _attack in js_attack:
-                                        if _attack['id'] == int(__id):
-                                            attack_names.append(_attack['name'])
-                                attack_names_str = ''
-                                for attack_name in attack_names:
-                                    attack_names_str += (attack_name + ', ')
-                                attack_names_str = attack_names_str[:-2]
-                                # print(attack_names_str)
-                                desc = desc\
-                                    .replace('$(attack_names_and optional_attack_ids)', attack_names_str)\
-                                    .replace('$duration', _effect['duration'])\
-                                    .replace('$(monster_effect_time___2)', str(effect['effect_keys'][1]['monster_effect_time']))
-                            if effect_id == '248':  # Warden
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
+
+                            for __effect in effect['effect_keys']:
+                                # print(effect)
+                                # print(__effect['effect_string'])
+                                _effect = parse_effect(__effect['effect_string'])
+                                if not _effect:
+                                    # _effect = []
+                                    continue
+                                # print(_effect['amount'])
+                                # print(desc)
+                                if _effect['key'] == 'grant_temporary_hp_with_cooldown':
+                                    desc = desc\
+                                        .replace('$(tmp_hp_cooldown cooldown)', _effect['cooldown'])\
+                                        .replace('$optional_percent_limit', _effect['percent'])
+                                if _effect['key'] == 'add_health_plus_tag_targets_percent_health':
+                                    desc = desc\
+                                        .replace('$percent', _effect['percent'])
+                                if _effect['key'] == 'bonus_damage_range':
+                                    desc = desc\
+                                        .replace('$min_amount', _effect['min_amount'])\
+                                        .replace('$damage_type', _effect['damage_type'])
+                                if _effect['key'] == 'hero_dps_mult_by_tag_additive':
+                                    desc = desc\
+                                        .replace('$(amount___2)', _effect['amount'])
+                                if _effect['key'] == 'revive_with_health_transfer':
+                                    desc = desc\
+                                        .replace('$gain_percent', _effect['gain_percent'])\
+                                        .replace('$lose_percent', _effect['lose_percent'])\
+                                        .replace('$wait_time', _effect['wait_time'])
+                                if _effect['key'] == 'increase_attack_cooldown':
+                                    desc = desc\
+                                        .replace('$(seconds_plural amount)', _effect['amount'])\
+                                        .replace('$(amount___2)', _effect['amount___2'])
+                                if _effect['key'] == 'stun_does_cooldown_and_damage_mult':
+                                    desc = desc\
+                                        .replace('$cooldown', _effect['cooldown'])
+                                if _effect['key'] == 'azaka_weretiger':
+                                    desc = desc\
+                                        .replace('$azaka_attacks', _effect['azaka_attacks'])\
+                                        .replace('$azaka_time', _effect['azaka_time'])
+                                if _effect['key'] == 'buff_attack_monster_effects_index':
+                                    desc = desc\
+                                        .replace('$amount___' + _effect['index'], _effect['amount'])
+                                if _effect['key'] == 'gold_multiplier_reduce':
+                                    desc = desc\
+                                        .replace('$amount___2', _effect['amount'])
+                                if _effect['key'] == 'monster_effect_on_attacked':
+                                    desc = desc\
+                                        .replace('$(time_str amount)', _effect['amount'] + ' second')
+                                if _effect['key'] == 'bonus_damage_monster_percent_from_party_range':
+                                    desc = desc\
+                                        .replace('$start_percent', _effect['start'])\
+                                        .replace('$end_percent', _effect['end'])
+                                if _effect['key'] == 'add_percent_targets_max_health':
+                                    desc = desc\
+                                        .replace('$(targets_desc_plural targets)', _effect['targets'] + name)
+                                if _effect['key'] == 'overwhelm_start_increase':
+                                    desc = desc\
+                                        .replace('$amount___2', _effect['amount'])
+                                if _effect['key'] == 'hero_dps_multiplier_reduced_by_age':
+                                    desc = desc\
+                                        .replace('$reduce', _effect['reduce'])\
+                                        .replace('$every_years', _effect['every_years'])\
+                                        .replace('$(start_years)', _effect['start_years'])\
+                                        .replace('$min', _effect['min'])
+                                if _effect['key'] == 'buff_upgrade_by_target_tag_mult':
+                                    desc = desc\
+                                        .replace('$(not_buffed amount___2)', _effect['amount'])
+                                if effect['id'] == 141:
+                                    desc = desc\
+                                        .replace('$seconds', str(__effect['seconds']))\
+                                        .replace('$hits', str(__effect['hits']))\
+                                        .replace('$(value stun_time)', str(__effect['stun_time']))
+                                if _effect['key'] == 'binwin_multi_attack':
+                                    desc = desc\
+                                        .replace('$(binwin_odds_buff base_odds)', _effect['base_odds'])\
+                                        .replace('$cooldown_added', _effect['cooldown_added'])\
+                                        .replace('$reduce_odds', _effect['reduce_odds'])
+                                if effect['id'] == 165:
+                                    desc = desc\
+                                        .replace('$upgrade_base_stack', _effect['amount'])
+                                if effect['id'] == 226:
+                                    if 'for_time' in __effect:
+                                        desc = desc\
+                                            .replace('$for_time', str(__effect['for_time']))
+                                if _effect['key'] == 'buff_upgrade_per_stunned_enemy':
+                                    desc = desc\
+                                        .replace('$cap_percent', _effect['cap_percent'])
+                                if effect['id'] == 204 or effect['id'] == 203:
+                                    # Could be a bug that description only uses 1 $amount var
+                                    if 'monster_effect' in __effect:
+                                        desc = desc\
+                                            .replace('$amount___2', _effect['amount'])
+                                if _effect['key'] == 'add_attack_stun':
+                                    desc = desc\
+                                        .replace('$duration', _effect['duration'])\
+                                        .replace('$(attack_names_and optional_attack_ids)', _effect['name'])
+                                if effect['id'] == 233:
+                                    if 'monster_effect_time' in __effect:
+                                        desc = desc\
+                                            .replace('$(monster_effect_time___2)', str(__effect['monster_effect_time']))
+                                if _effect['key'] == 'reduce_attack_cooldown_per_any_tagged_crusader':
+                                    desc = desc\
+                                        .replace('$(seconds_plural amount___2)', _effect['amount'] + ' seconds')
+                                if _effect['key'] in ['chance_add_attack_targets', 'chance_attack_adds_dot']:
+                                    desc = desc\
+                                        .replace('$chance', _effect['chance'])
+                                if effect['id'] == 351:
+                                    desc = desc\
+                                        .replace('$kill_count', _effect['kill_count'])\
+                                        .replace('$time', _effect['time'])\
+                                        .replace('$(if spurt_is_spirit)^^(', '. \'\'')\
+                                        .replace(')$fi$(only_when_purchased)^^Current Wasp Swarm Kills: $spurt_wasp_kills', '\'\'')
+                                if effect['id'] == 342:
+                                    desc = desc\
+                                        .replace('$(if spurt_is_spirit)^^(', '. \'\'')\
+                                        .replace('$fi', '\'\'')
+                                if effect['id'] == 345:
+                                    desc = desc\
+                                        .replace('$(if spurt_is_spirit)^^(', '. \'\'')\
+                                        .replace('$fi', '\'\'')
+                                desc = desc.replace('$amount___2', '$interim___2')
+                                if effect['id'] == 360:
+                                    desc = desc\
+                                        .replace('$increase_by_slot', _effect['amount'])
+                                if effect['id'] == 361:
+                                    desc = desc\
+                                        .replace(' $(if upgrade_purchased 2318)Champions exactly two slots away from Qillek provide twice the bonus each.', '')
+                                if effect['id'] == 369:
+                                    desc = desc\
+                                        .replace('$cooldown_buff', _effect['amount'])
+                                if effect['id'] == 371:
+                                    desc = desc\
+                                        .replace('$fighting_spirit_cooldown', _effect['amount'])
+                                if effect['id'] == 370:
+                                    desc = desc\
+                                        .replace('$calculated_stack_time', _effect['time'])
+                                if effect['id'] == 373:
+                                    desc = desc\
+                                        .replace('$charges', _effect['amount'])\
+                                        .replace('$(time_str charge_timer)', _effect['timer'] + ' seconds')
+                                if effect['id'] == 372:
+                                    desc = desc\
+                                        .replace('$chance', _effect['chance'])\
+                                        .replace('$ult_reduce_seconds', _effect['ult_reduce'])
+                                if effect['id'] == 376:
+                                    desc = desc\
+                                        .replace('$(if upgrade_purchased 2393)all Champions$(elif upgrade_purchased 2392)adjacent champions and champions in the top or bottom of their column$(elif upgrade_purchased 2391)champions up to two slots away$(or)', '')\
+                                        .replace('$(not_buffed amount)', _effect['amount'])
+                                if effect['id'] == 377:
+                                    desc = desc\
+                                        .replace('$(duration)', _effect['duration'])\
+                                        .replace('$duration', _effect['duration'])
+                                if effect['id'] == 378:
+                                    desc = desc\
+                                        .replace('$(round amount)', _effect['amount'])
+                                desc = desc.replace('$amount___2', '$interim___2')
                                 desc = desc\
                                     .replace('$amount', _effect['amount'])\
-                                    .replace('$(if upgrade_purchased 1897). Hex is spread to nearby enemies when a Hex cursed enemy is killed.$(fi)', '')
-                            if effect_id == '252':  # Warden
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '263':  # Nerys
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$first_effect_key_target', name)\
-                                    .replace('$target', name)
-                            if effect_id == '261':  # Nerys
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '260':  # Nerys
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '274':  # Paultin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '275':  # Paultin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '277':  # Paultin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
+                                    .replace('$(amount)', _effect['amount'])\
                                     .replace('$(not_buffed amount)', _effect['amount'])\
-                                    .replace('. (multiplicative, then buffed by $(upgrade_bonus 2037)%)', ' (multiplicative).')
-                            if effect_id == '276':  # Paultin
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
+                                    .replace('%%', '%')
+                                desc = desc.replace('$interim___2', '$amount___2')
+                                # print(desc)
+                            if _effect:
                                 desc = desc\
-                                    .replace('$amount%', _effect['amount'])
-                            if effect_id == '169':  # Diath
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(if upgrade_purchased 1192)or anyone kills an enemy affected by Silver Lining $(fi)', '')
-                            if effect_id == '171':  # Diath
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '172':  # Diath
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(upgrade_name id)', _effect['name'])
-                            if effect_id == '288':  # Black Viper
-                                desc = desc\
+                                    .replace(' \r\n\r\nAila\'s Contibution: $(aila_synergy)%\r\nTotal Aerois Synergy Pool: $(aerois_synergy)%', '')\
+                                    .replace('  \r\n\r\nQillek\'s Contibution: $(qillek_synergy)%\r\nTotal Aerois Synergy Pool: $(aerois_synergy)%', '')\
+                                    .replace('$(if upgrade_purchased 1550) or Champions within 2 slots distance of $target$(elif upgrade_purchased 1548) or Champions adjacent to $target', '')\
+                                    .replace('$(describe_rarity rarity)', 'Epic')\
+                                    .replace('$(tmp_hp_cooldown cooldown)', '10')\
+                                    .replace('$optional_percent_limit', '200')\
+                                    .replace('$only_when_purchased (Current Attackers: $num_attacking_monsters)', '')\
+                                    .replace('$asharra_kir_sabal_desc', '')\
+                                    .replace('Bruenor_hero', 'Bruenor')\
+                                    .replace('$(if upgrade_purchased 1897). Hex is spread to nearby enemies when a Hex cursed enemy is killed.$(fi)', '')\
+                                    .replace('$(if upgrade_purchased 1897). Hex is spread to nearby enemies when a Hex cursed enemy is killed.$(fi)', '')\
+                                    .replace('. (multiplicative, then buffed by $(upgrade_bonus 2037)%)', ' (multiplicative).')\
+                                    .replace('$(if upgrade_purchased 1192)or anyone kills an enemy affected by Silver Lining $(fi)', '')\
+                                    .replace('$(if upgrade_purchased 2329) ($(mult_value chance 2)% chance for Champions not adjacent to Korth)$fi', '')\
+                                    .replace('$only_when_purchased^^$korth_resurrection_charges', '')\
                                     .replace('$(if upgrade_purchased 2112)33$(or)', '')\
                                     .replace('$(if upgrade_purchased 2112)12.5$(or)', '')\
                                     .replace(' $jewel_thief_description', '')\
-                                    .replace('$(fi)', '')
-                            if effect_id == '286':  # Black Viper
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
                                     .replace('$(if upgrade_purchased 2111)or second $(fi)', '')\
-                                    .replace('$(if upgrade_purchased 2111)Black Viper attacks 0.5s faster after she Sneak Attacks.$(fi)', '')
-                            if effect_id == '283':  # Black Viper
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
-                                    .replace('$(if jewel_thief_upgrade_unlocked 0)Warlocks, Rangers, $(fi)', '')
-                            if effect_id == '284':  # Black Viper
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
+                                    .replace('$(if upgrade_purchased 2111)Black Viper attacks 0.5s faster after she Sneak Attacks.$(fi)', '')\
+                                    .replace('$(if jewel_thief_upgrade_unlocked 0)Warlocks, Rangers, $(fi)', '')\
                                     .replace('$(if jewel_thief_upgrade_unlocked 1)200$(or)', '')\
                                     .replace('$(if jewel_thief_upgrade_unlocked 1)10$(or)', '')\
-                                    .replace('$(fi)', '')
-                            if effect_id == '308':  # Rosie
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$(not_buffed amount)', _effect['amount'])
-                            if effect_id == '306':  # Rosie
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                __effect = parse_effect(effect['effect_keys'][1]['effect_string'])
-                                desc = desc\
-                                    .replace('$(amount)', _effect['amount'])\
-                                    .replace('$(seconds_plural amount___2)', __effect['amount'])
-                            if effect_id == '304':  # Rosie
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])\
                                     .replace('$(if upgrade_purchased 2153)fourth$(or)', '')\
-                                    .replace('$(fi)', '')
-                            if effect_id == '337':  # Aila
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '224':  # Gromma
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '52':  # Gromma
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            if effect_id == '53':  # Gromma
-                                _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                                desc = desc\
-                                    .replace('$amount', _effect['amount'])
-                            # if effect_id == '433':  # Aila
-                            #     _effect = parse_effect(effect['effect_keys'][0]['effect_string'])
-                            #     desc = desc\
-                            #         .replace('$(if not upgrade_purchased 2206)0.5 seconds$(or)', '')\
-                            #         .replace('$(fi)', '')
-                            desc = desc\
-                                .replace('$target', name)\
-                                .replace('$(target)', name)\
-                                .replace('$source_hero', name)\
-                                .replace('$source', name)\
-                                .replace('$(upgrade_hero id)', name)\
-                                .replace('$(upgrade_name id)', __effect['name'] if ('__effect' in locals() and 'name' in __effect) else '')\
-                                .replace('$(describe_rarity rarity)', 'Epic')\
-                                .replace('$(tmp_hp_cooldown cooldown)', '10')\
-                                .replace('$optional_percent_limit', '200')\
-                                .replace(' $chance%', '')\
-                                .replace('$percent%', 'a percentage')\
-                                .replace('$only_when_purchased (Current Attackers: $num_attacking_monsters)', '')\
-                                .replace('$asharra_kir_sabal_desc', '')\
-                                .replace('$min_amount% and $amount% bonus $damage_type', '10% and 25% bonus frost')\
-                                .replace('$amount% (and the damage of all Champions is increased by half that, $(amount___2)%', '50% (and the damage of all Champions is increased by half that, 25%')\
-                                .replace('Bruenor_hero', 'Bruenor')\
-                                .replace(' by $amount%', '')\
-                                .replace(' by $(amount)%', '')\
-                                .replace(' by $amount', '')\
-                                .replace(' by $(amount)', '')\
-                                .replace(' $amount%', '')\
-                                .replace(' $(amount)%', '')\
-                                .replace(' $amount', '')\
-                                .replace(' $(amount)', '')\
-                                .replace(' $amount seconds', '')\
-                                .replace(' $(amount) seconds', '')\
-                                .replace(' $(not_buffed amount)%', '')
-                            # .replace(' by', '')\
-                            return {
-                                'desc': desc,
-                                'key': effect_key,
-                                'id': effect_id,
-                                'unit': unit if 'unit' in locals() else ''
-                            }
+                                    .replace(' $hordesperson_description', '')\
+                                    .replace('$weretiger_description', '')\
+                                    .replace('$(if not upgrade_purchased 1152)Adjacent$(or)All$(fi)', 'Adjacent')\
+                                    .replace('$only_when_purchased^(Current Stacks: $upgrade_stacks)', '')\
+                                    .replace('$only_when_purchased^^Current Stacks: $upgrade_stacks', '')\
+                                    .replace('$only_when_purchased^^(Current Bounty of the Hall: $companion_bounty_pool%)', '')\
+                                    .replace('$(fi)', '')\
+                                    .replace('$target', name)\
+                                    .replace('$(target)', name)\
+                                    .replace('$source_hero', name)\
+                                    .replace('$source', name)\
+                                    .replace('$first_effect_key_target', name)\
+                                    .replace('$(upgrade_hero id)', name)\
+                                    .replace('$(upgrade_name id)', _effect['name'] if ('_effect' in locals() and 'name' in _effect) else '')
+                                # print(desc)
+                                return {
+                                    'desc': desc,
+                                    'key': effect_key,
+                                    'id': effect_id,
+                                    'unit': unit if 'unit' in locals() else ''
+                                }
                 else:
                     # print('more effects than expected')
                     if effect_key == 'effect_def':  # Vlahnya
@@ -1070,7 +1035,8 @@ for hero in js_hero:
                             'name': name_,
                             'desc': desc,
                             'key': effect_key,
-                            'id': effect_id
+                            'id': effect_id,
+                            'amount': '',
                         }
             elif effect_key in [
                 'hero_dps_multiplier_mult',
@@ -1093,7 +1059,7 @@ for hero in js_hero:
                 'increase_health_by_source_percent',  # Evelyn
                 'increase_monster_spawn_time_mult',  # Deekin
                 'return_source_dps_when_hit',  # Farideh
-                'heal',  # Donaar
+                'heal',  # Donaar, Celeste
                 'gold_multiplier_reduce',  # K'thriss
                 'increase_armored_damage',  # Wulfgar
                 'stunned_monster_extra_gold',  # Wulfgar
@@ -1103,19 +1069,41 @@ for hero in js_hero:
                 'add_hit_effect_to_source',  # Black Viper
                 'hero_dps_mult_per_crusader_where_mult',  # Rosie
                 'change_base_attack_every',  # Rosie
+                'attacking_monsters_global_dps_mult',  # Nayeli
+                'asharra_take_flight',  # Asharra
+                'dhadius_stacking_damage_buff',  # Dhadius
+                'buff_dhadius_chance_same_orb',  # Dhadius
+                'bonus_damage_when_monster_damaged',  # Zorbu
+                'bonus_damage_when_monster_attacking',  # Zorbu
+                'global_dps_multiplier_per_dead_champion_additive',  # Strix
+                'add_ally_effective_heal_effects',  # Evelyn
+                'buff_azaka_weretiger_time_reduce',  # Azaka
+                'reduce_azaka_weretiger_attacks',  # Azaka
+                'increase_ultimate_cooldown',  # Spurt
+                'time_scale',
+                'increase_damage_against_korth_marked',  # Korth
+                'lizardfolk_tactics_additional_cooldown_reduction',  # Korth
+                'rapid_strike_chance_buff',  # Korth
+                'bruenor_bounty_contribution',  # Bruenor
+                'hero_dps_mult_per_mark_of_ki',  # Stoki
             ]:
                 return {
                     'key': effect_key,
                     'amount': effect_id
                 }
             elif effect_key == 'add_attack_targets':  # Asharra
+                for ___effect in js_effect_key:
+                    if ___effect['key'] == 'add_attack_targets':
+                        desc = ___effect['descriptions']['desc']
                 if len(effect.split(',')) == 3:
                     _amount = effect_amount
+                    optional_attack_id = effect.split(',')[2]
                 else:
                     _amount = effect_id
                 return {
                     'key': effect_key,
-                    'amount': _amount
+                    'amount': _amount,
+                    'desc': desc,
                 }
             elif effect_key in [
                 'buff_upgrade',
@@ -1267,6 +1255,9 @@ for hero in js_hero:
                 # 'buff_upgrade',  # Paultin
                 'reduce_attack_cooldown_per_any_tagged_crusader',  # Rosie
                 'increase_monster_damage_if_affected_by',  # Gromma
+                'single_target_damage_buff',  # Minsc
+                'single_hit_attacks_again',  # Nrakk
+                'add_crit_effect',  # Catti-brie
             ]:
                 return {
                     'key': effect_key,
@@ -1313,30 +1304,19 @@ for hero in js_hero:
                     'name': _name,
                 }
             elif effect_key == 'hero_dps_multiplier_reduced_by_age':  # Gromma
-                for _effect in js_effect_key:
-                    if _effect['key'] == effect_key:
-                        desc = _effect['descriptions']['desc']
-                desc = desc\
-                    .replace('$amount', '{amount}')\
-                    .replace('$reduce', '{reduce}')\
-                    .replace('$(start_years)', '{start_years}')\
-                    .replace('$every_years', '{every_years}')\
-                    .replace('$min', '{min}')
-                desc = desc.format(
-                    amount=effect.split(',')[1],
-                    reduce=effect.split(',')[2],
-                    start_years=effect.split(',')[3],
-                    every_years=effect.split(',')[4],
-                    min=effect.split(',')[5],
-                )
                 return {
                     'key': effect_key,
-                    'desc': desc
+                    'amount': effect.split(',')[1],
+                    'reduce': effect.split(',')[2],
+                    'start_years': effect.split(',')[3],
+                    'every_years': effect.split(',')[4],
+                    'min': effect.split(',')[5],
                 }
             elif effect_key == 'add_percent_targets_max_health':  # Barrowin
                 return {
                     'key': effect_key,
-                    'amount': effect.split(',')[1]
+                    'amount': effect.split(',')[1],
+                    'targets': 'Champions in the same column as ',
                 }
             elif effect_key == 'overwhelm_start_increase':  # Barrowin
                 return {
@@ -1354,13 +1334,13 @@ for hero in js_hero:
                     'amount': effect.split(',')[1],
                     'ids': effect.split(',', 1)[1]
                 }
-            elif effect_key == 'revive_with_health_transfer':  # Strix
-                return {
-                    'key': effect_key,
-                    'gain': effect.split(',')[1],
-                    'lose': effect.split(',')[2],
-                    'wait': effect.split(',')[3],
-                }
+            # elif effect_key == 'revive_with_health_transfer':  # Strix
+            #     return {
+            #         'key': effect_key,
+            #         'gain': effect.split(',')[1],
+            #         'lose': effect.split(',')[2],
+            #         'wait': effect.split(',')[3],
+            #     }
             elif effect_key == 'bonus_damage_monster_percent_from_party_range':  # Catti-brie
                 for _effect in js_effect_key:
                     if _effect['key'] == effect_key:
@@ -1390,7 +1370,10 @@ for hero in js_hero:
                         'key': effect_key,
                         'amount': effect_id,
                     }
+                elif effect == effect_key:
+                    pass
                 else:
+                    # print(effect)
                     return {
                         'key': effect_key,
                         'amount': effect.split(',')[1],
@@ -1404,12 +1387,17 @@ for hero in js_hero:
                         'cap_percent': effect.split(',')[3],
                     }
             elif effect_key == 'add_attack_stun':  # Vlahnya
-                    return {
-                        'key': effect_key,
-                        'amount': effect.split(',')[1],
-                        'duration': effect.split(',')[2],
-                        'ids': effect.split(',', 4)[1],
-                    }
+                atk_name = ''
+                for _attack in js_attack:
+                    if str(_attack['id']) == effect.split(',', 4)[4]:
+                        atk_name = _attack['name']
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'duration': effect.split(',')[2],
+                    'ids': effect.split(',', 4)[4],
+                    'name': atk_name,
+                }
             elif effect_key == 'attacking_companion':  # Warden
                     return {
                         'key': effect_key,
@@ -1429,13 +1417,426 @@ for hero in js_hero:
                         'amount': effect.split(',')[1],
                         'radius': effect.split(',')[2],
                     }
+            elif effect_key == 'change_upgrade_targets':  # Evelyn
+                for upgrade in __upgrades:
+                    if not upgrade['required_level'] == 9999:
+                        if upgrade['id'] == int(effect_id):
+                            _name = upgrade['name']
+                return {
+                    'key': effect_key,
+                    'name': _name,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'gold_mult_per_tagged_crusader':  # Jarlaxle
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'hero_dps_mult_per_target_tag_crusader_mult_amount_before':  # Jarlaxle
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'hero_dps_mult_per_target_loot_rarity':  # Jarlaxle
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'grant_temporary_hp_with_cooldown':  # Calliope
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'interval': effect.split(',')[2],
+                    'cooldown': effect.split(',')[3],
+                    'percent': effect.split(',')[4],
+                }
+            elif effect_key == 'buff_upgrades_per_active_upgrade_tag_mult':  # Asharra
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'non_boss_wave_chances_extra_enemies':  # Minsc
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'monster_with_tag_more_damage':  # Minsc
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'damage_buff_on_upgrade_tag_targets':  # Minsc
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'chance_attack_adds_dot':  # Delina
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'chance': effect.split(',')[4],
+                }
+            elif effect_key == 'hero_dps_mult_per_target_crusader_prebonus_mult':  # Delina
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'chance_add_attack_targets':  # Delina
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'chance': effect.split(',')[2],
+                }
+            elif effect_key == 'buff_upgrade_per_any_tagged_crusader':  # Makos
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'global_dps_multiplier_mult_minus_targets':  # Tyril
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'reduce_damage_with_limit':  # Tyril
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'limit': effect.split(',')[2],
+                }
+            elif effect_key == 'target_attacking_monsters_hero_dps_mult':  # Tyril
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'limit': effect.split(',')[2],
+                }
+            elif effect_key == 'add_health_plus_tag_targets_percent_health':  # Jamilah
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'percent': effect.split(',')[4],
+                }
+            elif effect_key == 'hero_dps_multiplier_from_temp_hp':  # Jamilah
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'hero_dps_mult_per_target_unique_attacker':  # Jamilah
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'change_base_attack_per_num_attacking':  # Arkhan
+                return {
+                    'key': effect_key,
+                    'attack_id': effect.split(',')[1],
+                    'min_attackers': effect.split(',')[2],
+                    'amount': '',  # hack
+                }
+            elif effect_key == 'receive_all_formation_abilities_for':  # Arkhan
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'change_base_attack':  # Hitch
+                return {
+                    'key': effect_key,
+                    'attack_id': effect.split(',')[1],
+                    'amount': '',  # hack
+                }
+            elif effect_key == 'hero_dps_mult_per_target_crusader_mult':  # Hitch
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'damage_reduction_ranged':  # Gromma
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'bonus_damage_range':  # Drizzt
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'min_amount': effect.split(',')[2],
+                    'damage_type': effect.split(',')[3],
+                }
+            elif effect_key == 'targets_with_tag_hero_dps_mult':  # Drizzt
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'hero_dps_mult_by_tag_additive':  # Drizzt
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'increase_monster_damage_from':  # Regis
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'buff_effects_from_upgrade_fa':  # Birdsong
+                for upgrade in __upgrades:
+                    if not upgrade['required_level'] == 9999:
+                        if upgrade['id'] == int(effect_id):
+                            _name = upgrade['name']
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'name': _name,
+                }
+            elif effect_key == 'increase_monster_damage_percent_to_party':  # Strix
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'revive_with_health_transfer':  # Strix
+                return {
+                    'key': effect_key,
+                    'gain_percent': effect.split(',')[1],
+                    'lose_percent': effect.split(',')[2],
+                    'wait_time': effect.split(',')[3],
+                    'amount': '',  # hack
+                }
+            elif effect_key == 'reduce_attack_cooldown_if_formation_under_attack':  # Strix
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'increase_attack_cooldown':  # Strix
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'amount___2': str(int(int(effect.split(',')[1])*2)),
+                }
+            elif effect_key == 'add_attack_aoe_targets_every':  # Nrakk
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'radius': effect.split(',')[2],
+                    'every_num_attacks': effect.split(',')[3],
+                }
+            elif effect_key == 'bonus_damage_every':  # Nrakk
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'stun_does_cooldown_and_damage_mult':  # Nrakk
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'limit': effect.split(',')[2],
+                    'cooldown': effect.split(',')[3],
+                }
+            elif effect_key == 'add_target_to_upgrade':  # Deekin
+                return {
+                    'key': effect_key,
+                    'amount': '',  # hack
+                }
+            elif effect_key == 'buff_upgrade_or_has_tracked_effect':  # Deekin
+                return {
+                    'key': effect_key,
+                    'amount': '',  # hack
+                }
+            elif effect_key == 'azaka_weretiger':  # Azaka
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'azaka_time': effect.split(',')[2],
+                    'azaka_attacks': effect.split(',')[3],
+                }
+            elif effect_key == 'gold_mult_if_monsters_on_screen':  # Ishi
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'buff_attack_monster_effects_index_additive':  # Donaar
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'index': effect.split(',')[2],
+                }
+            elif effect_key == 'buff_attack_monster_effects_index':  # Donaar
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'index': effect.split(',')[2],
+                }
+            elif effect_key == 'force_add_target_to_upgrade':  # Donaar
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'attack_hits_again':  # Warden
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'spread_monster_effect':  # Warden
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'fire_trigger_by_upgrade_id':  # Nerys
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'kthriss_hordesperson':  # K'thriss
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'blackviper_jewel_thief':  # Black Viper
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'increase_jewel_thief_drop_rate':  # Black Viper
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'increase_jewel_thief_damage_bonus':  # Black Viper
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'return_source_damage_when_hit':  # Rosie
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'buff_upgrade_per_any_tagged_crusader_where':  # Rosie
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'increase_storm_soul_stun_seconds':  # Aila
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'increase_raging_storm_stun_seconds':  # Aila
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
+            elif effect_key == 'spurt_waspiration':  # Spurt
+                return {
+                    'key': effect_key,
+                    'kill_count': effect.split(',')[1],
+                    'time': effect.split(',')[2],
+                    'amount': '',
+                }
+            elif effect_key == 'aila_aerois_synergy_contribution':  # Aila
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'amount_max': effect.split(',')[2],
+                }
+            elif effect_key == 'upgrade_buff_from_aerois_synergy_pool':  # Aila
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'upgrade_id': effect.split(',')[2],
+                }
+            elif effect_key == 'heal_by_distance_from_source':  # Qillek
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'distance': effect.split(',')[2],
+                }
+            elif effect_key == 'add_upgrade_bonus_by_target':  # Qillek
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'qilleck_aerois_synergy_contribution':  # Qillek
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'amount_min': effect.split(',')[2],
+                    'increase': effect.split(',')[3],
+                }
+            elif effect_key == 'korth_lizardfolk_tactics':  # Korth
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                }
+            elif effect_key == 'korth_fighting_spirit':  # Korth
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'cooldown': effect.split(',')[2],
+                }
+            elif effect_key == 'korth_calculated':  # Korth
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'time': effect.split(',')[2],
+                }
+            elif effect_key == 'korth_rapid_strike':  # Korth
+                return {
+                    'key': effect_key,
+                    'chance': effect.split(',')[1],
+                    'ult_reduce': effect.split(',')[2],
+                    'amount': '',
+                }
+            elif effect_key == 'korth_resurrection':  # Korth
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'timer': effect.split(',')[2],
+                }
+            elif effect_key == 'walnut_jobs_done':  # Walnut
+                for upgrade in __upgrades:
+                    if upgrade['id'] == int(effect.split(',')[2]):
+                        _name = upgrade['name']
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'upgrade_id': effect.split(',')[2],
+                    'duration': effect.split(',')[3],
+                    'name': _name,
+                }
+            elif effect_key == 'wolfnut':  # Walnut
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'attack_id': effect.split(',')[2],
+                }
+            elif effect_key == 'walnut_cosigners':  # Walnut
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'attack_id': effect.split(',')[2],
+                }
+            elif effect_key == 'buff_upgrade_by_target_tag_mult':
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'upgrade_id': effect.split(',')[4],
+                }
+            elif effect_key == 'grant_temporary_hp_with_cooldown':
+                return {
+                    'key': effect_key,
+                    'amount': effect.split(',')[1],
+                    'interval': effect.split(',')[2],
+                    'cooldown': effect.split(',')[3],
+                    'optional_percent_limit': effect.split(',')[4],
+                }
             # elif effect_key == 'reduce_upgrade_every_num_attacks':  # Rosie
-
             #         return {
             #             'key': effect_key,
             #             'amount': effect.split(',')[2],
             #             'num_hits': effect.split(',')[1],
             #         }
+            elif effect_key == 'do_nothing':
+                return {
+                    'key': effect_key,
+                    'amount': '',
+                }
             print('error:', effect)
             return False
 
@@ -1490,64 +1891,133 @@ for hero in js_hero:
                         if not upgrade['required_level'] in ab_table:
                             ab_table[upgrade['required_level']] = {'unlockAbility': True}
                         effect = None
-                        effect = parse_effect(upgrade['effect'])
-                        # print(effect)
                         # print(upgrade)
-                        if effect['key'] == 'reduce_overwhelm_effect':
-                            # print('unlock_ability -> reduce_overwhelm_effect')
-                            ab_table[upgrade['required_level']
-                                     ]['redOverwhelm'] = effect['amount'] + '%'
-                            # desc = effect['desc'].replace('$target', name)
-                            ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif effect['key'] == 'attack_crit_chance':
-                            # print('attack_crit_chance')
-                            ab_table[upgrade['required_level']
-                                     ]['AttCritChance'] = effect['chance'] + '%'
-                            ab_table[upgrade['required_level']]['AttCritDmg'] = effect['amount']
-                            ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif effect['key'] == 'increase_num_unique_hits':
-                            # print('increase_num_unique_hits')
+                        effect = parse_effect(upgrade['effect'])
+                        if effect:
+                            # print(effect)
+                            if effect['key'] == 'reduce_overwhelm_effect':
+                                # print('unlock_ability -> reduce_overwhelm_effect')
+                                ab_table[upgrade['required_level']
+                                         ]['redOverwhelm'] = effect['amount'] + '%'
+                                # desc = effect['desc'].replace('$target', name)
+                                ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif effect['key'] == 'attack_crit_chance':
+                                # print('attack_crit_chance')
+                                ab_table[upgrade['required_level']
+                                         ]['AttCritChance'] = effect['chance'] + '%'
+                                ab_table[upgrade['required_level']]['AttCritDmg'] = effect['amount']
+                                ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif effect['key'] == 'increase_num_unique_hits':
+                                # print('increase_num_unique_hits')
+                                desc = effect['desc']
+                                desc = desc.replace('$target', name)
+                                ab_table[upgrade['required_level']]['IncHits'] = effect['amount'] + '%'
+                                ab_table[upgrade['required_level']]['abTitle'] = desc
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif effect['key'] == 'effect_def':
+                                # print('just a multiple effect_def. should be in Vlahnya.')
+                                desc = effect['desc'] if 'desc' in effect else ''
+                                if desc == '':
+                                    if not name == 'Aila':
+                                        desc = upgrade['tip_text']      # Vlahnya
+                                        ids = effect['ids']
+                                    for _effect in js_effect:
+                                        if str(_effect['id']) in ids.split(','):
+                                            if not _effect['id'] == 237:
+                                                _effect_name = _effect['properties']['effect_name']
+                                                _effect_desc = _effect['description']\
+                                                    .replace('\r\n', '')\
+                                                    .replace('$(if not incoming_desc)Increases the damage of Champions ahead of $source by $(with_upgrade_bonus 1656,3 amount)% for each stack:$(fi)', '')\
+                                                    .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,0)/$max_stacks at $(upgrade_bonus 1656,0)% effectiveness = $(active_upgrade_value_with_bonuses 1656,0 1656,3)%)', '')\
+                                                    .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,1)/$max_stacks at $(upgrade_bonus 1656,1)% effectiveness = $(active_upgrade_value_with_bonuses 1656,1 ', '')\
+                                                    .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,1)/$max_stacks at $(upgrade_bonus 1656,1)% effectiveness  = $(active_upgrade_value_with_bonuses 1656,1 1656,3)%)', '')\
+                                                    .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,2)/$max_stacks at $(upgrade_bonus 1656,2)% effectiveness = $(active_upgrade_value_with_bonuses 1656,2 1656,3)%)$(if not incoming_desc)Each trigger\'s stack decreases by 20% every 10 secondsTotal Bonus: $(active_upgrade_value 1656,3)%$(fi)', '')\
+                                                    .replace('$base_stack_amount', str(_effect['effect_keys'][0]['base_stack_amount']))\
+                                                    .replace('$source', name)
+                                                desc += '\n\n'
+                                                desc += ('* ' + _effect_name)
+                                                desc += '\n\n'
+                                                desc += (': ' + _effect_desc)
+                                if isinstance(ab_table[upgrade['required_level']], list):
+                                    temp = {'unlockAbility': True}
+                                    temp['abTitle'] = desc
+                                    temp['abName'] = upgrade['name']
+                                    ab_table[upgrade['required_level']].append(temp)
+                                elif not 'abTitle' in ab_table[upgrade['required_level']]:
+                                    ab_table[upgrade['required_level']]['abTitle'] = desc
+                                    ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                                else:
+                                    temp = ab_table[upgrade['required_level']]
+                                    ab_table[upgrade['required_level']] = []
+                                    ab_table[upgrade['required_level']].append(temp)
+                                    temp2 = {'unlockAbility': True}
+                                    temp2['abTitle'] = desc
+                                    temp2['abName'] = upgrade['name']
+                                    ab_table[upgrade['required_level']].append(temp2)
+                            elif effect['key'] == 'reduce_upgrade_every_num_attacks':  # Rosie
+                                # print('reduce_upgrade_every_num_attacks')
+                                # _effect = parse_effect
+                                # desc = effect['desc']
+                                for _effect_key in js_effect_key:
+                                    if effect['key'] == _effect_key['key']:
+                                        desc = _effect_key['descriptions']['desc']
+                                desc = desc\
+                                    .replace('$(upgrade_hero id)', name)\
+                                    .replace('$(upgrade_name id)', effect['name'])\
+                                    .replace('$amount', effect['amount'])
+                                ab_table[upgrade['required_level']]['abTitle'] = desc
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif effect['key'] in ['aila_storm_aura', 'storm_aura_storm_soul']:  # Aila
+                                # print('aila_storm_aura or storm_aura_storm_soul')
+                                ab_table[upgrade['required_level']]['abTitle'] = upgrade['tip_text']
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif effect['key'] in [
+                                'storm_aura_shielding_storm',  # Aila
+                                'storm_aura_raging_storm',  # Aila
+                            ]:
+                                # print('storm_aura_shielding_storm')
+                                # for _effect_key in js_effect_key:
+                                #     if effect['key'] == _effect_key['key']:
+                                #         desc = _effect_key['descriptions']['desc']
+                                desc = effect['desc']
+                                desc = desc\
+                                    .replace('$amount', effect['amount'])\
+                                    .replace('$(if not upgrade_purchased 2206)0.5 seconds$(or)', '')\
+                                    .replace('$(fi)', '')
+                                ab_table[upgrade['required_level']]['abTitle'] = desc
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            elif 'specialization_name' in upgrade:  # Nerys
+                                pass
+                                # print('spec, not unlock ability')
+                                # ab_table[upgrade['required_level']]['REQUIRE'] = upgrade['name'] if not upgrade['name'] == '' else upgrade['specialization_name']
+                            elif not effect['key'] in ['health_add']:
+                                # print('unlock_ability but not health_add')
+                                print(upgrade)
+                                print(effect)
+                                ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
+                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                #  Special Celeste Ability Unlock
+                elif upgrade['upgrade_type'] == 'increase_health':
+                    effect = None
+                    effect = parse_effect(upgrade['effect'])
+                    if effect:
+                        if effect['key'] == 'effect_def':
+                            if not upgrade['required_level'] in ab_table:
+                                ab_table[upgrade['required_level']] = {'unlockAbility': True}
                             desc = effect['desc']
-                            desc = desc.replace('$target', name)
-                            ab_table[upgrade['required_level']]['IncHits'] = effect['amount'] + '%'
-                            ab_table[upgrade['required_level']]['abTitle'] = desc
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif effect['key'] == 'effect_def':
-                            # print('just a multiple effect_def. should be in Vlahnya.')
-                            desc = effect['desc'] if 'desc' in effect else ''
-                            if desc == '':
-                                desc = upgrade['tip_text']      # Vlahnya
-                                ids = effect['ids']
-                                for _effect in js_effect:
-                                    if str(_effect['id']) in ids.split(','):
-                                        if not _effect['id'] == 237:
-                                            _effect_name = _effect['properties']['effect_name']
-                                            _effect_desc = _effect['description']\
-                                                .replace('\r\n', '')\
-                                                .replace('$(if not incoming_desc)Increases the damage of Champions ahead of $source by $(with_upgrade_bonus 1656,3 amount)% for each stack:$(fi)', '')\
-                                                .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,0)/$max_stacks at $(upgrade_bonus 1656,0)% effectiveness = $(active_upgrade_value_with_bonuses 1656,0 1656,3)%)', '')\
-                                                .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,1)/$max_stacks at $(upgrade_bonus 1656,1)% effectiveness = $(active_upgrade_value_with_bonuses 1656,1 ', '')\
-                                                .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,1)/$max_stacks at $(upgrade_bonus 1656,1)% effectiveness  = $(active_upgrade_value_with_bonuses 1656,1 1656,3)%)', '')\
-                                                .replace('$only_when_purchased (Current stacks: $(upgrade_stacks_num 1656,2)/$max_stacks at $(upgrade_bonus 1656,2)% effectiveness = $(active_upgrade_value_with_bonuses 1656,2 1656,3)%)$(if not incoming_desc)Each trigger\'s stack decreases by 20% every 10 secondsTotal Bonus: $(active_upgrade_value 1656,3)%$(fi)', '')\
-                                                .replace('$base_stack_amount', str(_effect['effect_keys'][0]['base_stack_amount']))\
-                                                .replace('$source', name)
-                                            desc += '\n\n'
-                                            desc += ('* ' + _effect_name)
-                                            desc += '\n\n'
-                                            desc += (': ' + _effect_desc)
-                            if ('id' in effect) and (effect['id'] == 47):
-                                for _effect in js_effect:
-                                    __effect = None
-                                    __effect = parse_effect(
-                                        _effect['effect_keys'][0]['effect_string'])
-                                    if __effect['key'] == 'hero_dps_multiplier_reduced_by_age':
-                                        desc = __effect['desc']
-                                        ab_table[upgrade['required_level']]['abTitle'] = desc
-                            # ab_table[upgrade['required_level']
-                                     # ]['abTitle'] = desc
-                            # ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            desc = desc\
+                                .replace('$target', name)\
+                                .replace('$source', name)\
+                                .replace('$(upgrade_hero id)', name)\
+                                .replace('$(upgrade_name id)', effect['name'] if 'name' in effect else '')\
+                                .replace(' $amount%', '')\
+                                .replace(' $(amount)%', '')\
+                                .replace(' $amount seconds', '')\
+                                .replace(' $(amount) seconds', '')\
+                                .replace(' for $(amount)', '')\
+                                .replace(' for $amount', '')
                             if isinstance(ab_table[upgrade['required_level']], list):
                                 temp = {'unlockAbility': True}
                                 temp['abTitle'] = desc
@@ -1564,81 +2034,6 @@ for hero in js_hero:
                                 temp2['abTitle'] = desc
                                 temp2['abName'] = upgrade['name']
                                 ab_table[upgrade['required_level']].append(temp2)
-                        elif effect['key'] == 'reduce_upgrade_every_num_attacks':  # Rosie
-                            # print('reduce_upgrade_every_num_attacks')
-                            # _effect = parse_effect
-                            # desc = effect['desc']
-                            for _effect_key in js_effect_key:
-                                if effect['key'] == _effect_key['key']:
-                                    desc = _effect_key['descriptions']['desc']
-                            desc = desc\
-                                .replace('$(upgrade_hero id)', name)\
-                                .replace('$(upgrade_name id)', effect['name'])\
-                                .replace('$amount', effect['amount'])
-                            ab_table[upgrade['required_level']]['abTitle'] = desc
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif effect['key'] in ['aila_storm_aura', 'storm_aura_storm_soul']:  # Aila
-                            # print('aila_storm_aura or storm_aura_storm_soul')
-                            ab_table[upgrade['required_level']]['abTitle'] = upgrade['tip_text']
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif effect['key'] in [
-                            'storm_aura_shielding_storm',  # Aila
-                            'storm_aura_raging_storm',  # Aila
-                        ]:
-                            # print('storm_aura_shielding_storm')
-                            # for _effect_key in js_effect_key:
-                            #     if effect['key'] == _effect_key['key']:
-                            #         desc = _effect_key['descriptions']['desc']
-                            desc = effect['desc']
-                            desc = desc\
-                                .replace('$amount', effect['amount'])\
-                                .replace('$(if not upgrade_purchased 2206)0.5 seconds$(or)', '')\
-                                .replace('$(fi)', '')
-                            ab_table[upgrade['required_level']]['abTitle'] = desc
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        elif 'specialization_name' in upgrade:  # Nerys
-                            pass
-                            # print('spec, not unlock ability')
-                            # ab_table[upgrade['required_level']]['REQUIRE'] = upgrade['name'] if not upgrade['name'] == '' else upgrade['specialization_name']
-                        elif not effect['key'] in ['health_add']:
-                            # print('unlock_ability but not health_add')
-                            ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                #  Special Celeste Ability Unlock
-                elif upgrade['upgrade_type'] == 'increase_health':
-                    effect = None
-                    effect = parse_effect(upgrade['effect'])
-                    if effect['key'] == 'effect_def':
-                        if not upgrade['required_level'] in ab_table:
-                            ab_table[upgrade['required_level']] = {'unlockAbility': True}
-                        desc = effect['desc']
-                        desc = desc\
-                            .replace('$target', name)\
-                            .replace('$source', name)\
-                            .replace('$(upgrade_hero id)', name)\
-                            .replace('$(upgrade_name id)', effect['name'] if 'name' in effect else '')\
-                            .replace(' $amount%', '')\
-                            .replace(' $(amount)%', '')\
-                            .replace(' $amount seconds', '')\
-                            .replace(' $(amount) seconds', '')\
-                            .replace(' for $(amount)', '')\
-                            .replace(' for $amount', '')
-                        if isinstance(ab_table[upgrade['required_level']], list):
-                            temp = {'unlockAbility': True}
-                            temp['abTitle'] = desc
-                            temp['abName'] = upgrade['name']
-                            ab_table[upgrade['required_level']].append(temp)
-                        elif not 'abTitle' in ab_table[upgrade['required_level']]:
-                            ab_table[upgrade['required_level']]['abTitle'] = desc
-                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        else:
-                            temp = ab_table[upgrade['required_level']]
-                            ab_table[upgrade['required_level']] = []
-                            ab_table[upgrade['required_level']].append(temp)
-                            temp2 = {'unlockAbility': True}
-                            temp2['abTitle'] = desc
-                            temp2['abName'] = upgrade['name']
-                            ab_table[upgrade['required_level']].append(temp2)
                     # elif effect['key'] == 'buff_upgrade':
                     #     for _upgrade in __upgrades:
                     #         if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
@@ -1675,455 +2070,483 @@ for hero in js_hero:
                     # if not upgrade['hero_id'] == 6:  # If not Asharra
                     effect = None
                     effect = parse_effect(upgrade['effect'])
-                    if effect['key'] == 'effect_def':
-                        if not upgrade['required_level'] in ab_table:
-                            ab_table[upgrade['required_level']] = {'unlockAbility': True}
-                        # print(ab_table[upgrade['required_level']])
-                        ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
-                        ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                        pass
-                    # Asharra
-                    elif effect['key'] == 'add_attack_targets':  # Asharra
-                        if not upgrade['required_level'] in ab_table:
-                            ab_table[upgrade['required_level']] = {}
-                        ab_table[upgrade['required_level']]['add_attack_targets'] = ' +' + effect['amount']
-                        ab_table[upgrade['required_level']]['abName'] = 'add_attack_targets'
-                # Upgrade ability
-                elif upgrade['upgrade_type'] == 'upgrade_ability':
-                    effect = None
-                    effect = parse_effect(upgrade['effect'])
-                    if effect['key'] == 'add_attack_targets':  # Asharra
-                        if not upgrade['required_level'] in ab_table:
-                            ab_table[upgrade['required_level']] = {}
-                        ab_table[upgrade['required_level']]['add_attack_targets'] = ' +' + effect['amount']
-                        ab_table[upgrade['required_level']]['abName'] = 'add_attack_targets'
-                    if name == 'Asharra':
-                        if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
-                            if len(effect['ids']) == 3:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
-                            elif len(effect['ids']) == 6:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec2upg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
-                            else:
-                                print('ugh')
-                    elif name == 'Minsc':
-                        if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
-                            if len(effect['ids']) == 5:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['specupg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['abName'] = 'specupg'
-                    elif name == 'Regis':
-                        if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
-                            if len(effect['ids']) == 2:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
-                            elif len(effect['ids']) == 3:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec2upg'] = effect['amount'] + '%'
-                                # ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
-                                ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
-                            else:
-                                print('ugh')
-                                exit()
-                    elif name == 'Zorbu':
-                        if effect['key'] == 'buff_upgrade':  # Asharra Bond buff
-                            if effect['id'] in ['843', '844', '845', '846', '847']:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec1upg'] = effect['amount']
-                                ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
-                            elif effect['id'] in ['850', '851']:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec2upg'] = effect['amount']
-                                ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
-                    elif name =='Gromma':
+                    if effect:
                         if effect['key'] == 'effect_def':
                             if not upgrade['required_level'] in ab_table:
                                 ab_table[upgrade['required_level']] = {'unlockAbility': True}
                             # print(ab_table[upgrade['required_level']])
-                            _effect = None
-                            _effect = parse_effect(upgrade['effect'])
-                            desc = _effect['desc']
-                            desc = desc\
-                                .replace('$target', name)\
-                                .replace('$source', name)\
-                                .replace('$(upgrade_hero id)', name)\
-                                .replace('$(upgrade_name id)', effect['name'] if 'name' in effect else '')
-                                # .replace('$amount', _effect['amount'])
-                            if isinstance(ab_table[upgrade['required_level']], list):
-                                temp = {'unlockAbility': True}
-                                temp['abTitle'] = desc
-                                temp['abName'] = upgrade['name']
-                                ab_table[upgrade['required_level']].append(temp)
-                            elif not 'abTitle' in ab_table[upgrade['required_level']]:
-                                ab_table[upgrade['required_level']]['abTitle'] = desc
-                                ab_table[upgrade['required_level']]['abName'] = upgrade['name']
-                            else:
-                                temp = ab_table[upgrade['required_level']]
-                                ab_table[upgrade['required_level']] = []
-                                ab_table[upgrade['required_level']].append(temp)
-                                temp2 = {'unlockAbility': True}
-                                temp2['abTitle'] = desc
-                                temp2['abName'] = upgrade['name']
-                                ab_table[upgrade['required_level']].append(temp2)
-                            # print(ab_table[upgrade['required_level']])
-                    elif name == 'Ishi':
-                        if effect['key'] == 'buff_upgrade':  # Asharra Bond buff
-                            if effect['id'] in ['1239', '1240']:
+                            ab_table[upgrade['required_level']]['abTitle'] = effect['desc']
+                            ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                            pass
+                        # Asharra
+                        elif effect['key'] == 'add_attack_targets':  # Asharra
+                            if not upgrade['required_level'] in ab_table:
+                                ab_table[upgrade['required_level']] = {}
+                            ab_table[upgrade['required_level']]['add_attack_targets'] = ' +' + effect['amount']
+                            ab_table[upgrade['required_level']]['abName'] = 'add_attack_targets'
+                # Upgrade ability
+                elif upgrade['upgrade_type'] == 'upgrade_ability':
+                    effect = None
+                    effect = parse_effect(upgrade['effect'])
+                    if effect:
+                        if effect['key'] == 'add_attack_targets':  # Asharra
+                            if not upgrade['required_level'] in ab_table:
+                                ab_table[upgrade['required_level']] = {}
+                            ab_table[upgrade['required_level']]['add_attack_targets'] = ' +' + effect['amount']
+                            ab_table[upgrade['required_level']]['abName'] = 'add_attack_targets'
+                        if name == 'Asharra':
+                            if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
+                                if len(effect['ids']) == 3:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
+                                elif len(effect['ids']) == 6:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec2upg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
+                                else:
+                                    print('ugh')
+                        elif name == 'Minsc':
+                            if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
+                                if len(effect['ids']) == 5:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['specupg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['abName'] = 'specupg'
+                        elif name == 'Regis':
+                            if effect['key'] == 'buff_upgrades':  # Asharra Bond buff
+                                if len(effect['ids']) == 2:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
+                                elif len(effect['ids']) == 3:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec2upg'] = effect['amount'] + '%'
+                                    # ab_table[upgrade['required_level']]['spec1upg'] = effect['amount'] + '%'
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
+                                else:
+                                    print('ugh')
+                                    exit()
+                        elif name == 'Zorbu':
+                            if effect['key'] == 'buff_upgrade':  # Asharra Bond buff
+                                if effect['id'] in ['843', '844', '845', '846', '847']:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec1upg'] = effect['amount']
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
+                                elif effect['id'] in ['850', '851']:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec2upg'] = effect['amount']
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
+                        elif name =='Gromma':
+                            if effect['key'] == 'effect_def':
                                 if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec1upg'] = effect['amount']
-                                ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
-                            elif effect['id'] in ['1243', '1244', '1245']:
-                                if not upgrade['required_level'] in ab_table:
-                                    ab_table[upgrade['required_level']] = {}
-                                ab_table[upgrade['required_level']]['spec2upg'] = effect['amount']
-                                ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
+                                    ab_table[upgrade['required_level']] = {'unlockAbility': True}
+                                # print(ab_table[upgrade['required_level']])
+                                _effect = None
+                                _effect = parse_effect(upgrade['effect'])
+                                desc = _effect['desc']
+                                desc = desc\
+                                    .replace('$target', name)\
+                                    .replace('$source', name)\
+                                    .replace('$(upgrade_hero id)', name)\
+                                    .replace('$(upgrade_name id)', effect['name'] if 'name' in effect else '')
+                                    # .replace('$amount', _effect['amount'])
+                                if isinstance(ab_table[upgrade['required_level']], list):
+                                    temp = {'unlockAbility': True}
+                                    temp['abTitle'] = desc
+                                    temp['abName'] = upgrade['name']
+                                    ab_table[upgrade['required_level']].append(temp)
+                                elif not 'abTitle' in ab_table[upgrade['required_level']]:
+                                    ab_table[upgrade['required_level']]['abTitle'] = desc
+                                    ab_table[upgrade['required_level']]['abName'] = upgrade['name']
+                                else:
+                                    temp = ab_table[upgrade['required_level']]
+                                    ab_table[upgrade['required_level']] = []
+                                    ab_table[upgrade['required_level']].append(temp)
+                                    temp2 = {'unlockAbility': True}
+                                    temp2['abTitle'] = desc
+                                    temp2['abName'] = upgrade['name']
+                                    ab_table[upgrade['required_level']].append(temp2)
+                                # print(ab_table[upgrade['required_level']])
+                        elif name == 'Ishi':
+                            if effect['key'] == 'buff_upgrade':  # Asharra Bond buff
+                                if effect['id'] in ['1239', '1240']:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec1upg'] = effect['amount']
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec1upg'
+                                elif effect['id'] in ['1243', '1244', '1245']:
+                                    if not upgrade['required_level'] in ab_table:
+                                        ab_table[upgrade['required_level']] = {}
+                                    ab_table[upgrade['required_level']]['spec2upg'] = effect['amount']
+                                    ab_table[upgrade['required_level']]['abName'] = 'spec2upg'
                 # If Ultimate
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'set_ultimate_attack':
-                    # print('ultimate')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {'unlockUltimate': True}
-                    for attack in js_attack:
-                        if str(attack['id']) == effect['id']:
-                            desc = effect['desc']
-                            desc = desc.replace('$ishi_ult_time', '15')  # Ishi
-                            ab_table[upgrade['required_level']]['abTitle'] = desc
-                            ab_table[upgrade['required_level']]['abName'] = effect['name']
+                if effect:
+                    if effect['key'] == 'set_ultimate_attack':
+                        # print('ultimate')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {'unlockUltimate': True}
+                        for attack in js_attack:
+                            if str(attack['id']) == effect['id']:
+                                desc = effect['desc']
+                                desc = desc.replace('$ishi_ult_time', '15')  # Ishi
+                                ab_table[upgrade['required_level']]['abTitle'] = desc
+                                ab_table[upgrade['required_level']]['abName'] = effect['name']
+                    elif (id_ == 43 and upgrade['upgrade_type'] == 'unlock_ultimate'):
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {'unlockUltimate': True}
+                        for _effect in js_effect:
+                            if int(effect['id']) == _effect['id']:
+                                effect_string = _effect['effect_keys'][0]['effect_string']
+                                __effect = parse_effect(effect_string)
+                                ab_table[upgrade['required_level']]['abTitle'] = desc
+                                ab_table[upgrade['required_level']]['abName'] = __effect['name']
                 # If Damage
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'hero_dps_multiplier_mult':
-                    # print('ifdamage')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                        for _upgrade in __upgrades:
-                            if not _upgrade['required_level'] == 9999:
-                                if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                                    if upgrade['required_upgrade_id'] == _upgrade['id']:
-                                        specname = _upgrade['specialization_name']
-                        ab_table[upgrade['required_level']]['dmg'] = '{{{{Spec|{spec}|{amount}%}}}}'.format(spec=specname, amount=effect['amount'])
-                    else:
-                        ab_table[upgrade['required_level']]['dmg'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'hero_dps_multiplier_mult':
+                        # print('ifdamage')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                            for _upgrade in __upgrades:
+                                if not _upgrade['required_level'] == 9999:
+                                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                                        if upgrade['required_upgrade_id'] == _upgrade['id']:
+                                            specname = _upgrade['specialization_name']
+                            ab_table[upgrade['required_level']]['dmg'] = '{{{{Spec|{spec}|{amount}%}}}}'.format(spec=specname, amount=effect['amount'])
+                        else:
+                            ab_table[upgrade['required_level']]['dmg'] = effect['amount'] + '%'
                 # If Damage All
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'global_dps_multiplier_mult':
-                    # print('ifdamageall')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                        for _upgrade in __upgrades:
-                            if not _upgrade['required_level'] == 9999:
-                                if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                                    if upgrade['required_upgrade_id'] == _upgrade['id']:
-                                        specname = _upgrade['specialization_name']
-                        ab_table[upgrade['required_level']]['dmg_all'] = '{{{{Spec|{spec}|{amount}%}}}}'.format(spec=specname, amount=effect['amount'])
-                    else:
-                        ab_table[upgrade['required_level']]['dmg_all'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'global_dps_multiplier_mult':
+                        # print('ifdamageall')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                            for _upgrade in __upgrades:
+                                if not _upgrade['required_level'] == 9999:
+                                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                                        if upgrade['required_upgrade_id'] == _upgrade['id']:
+                                            specname = _upgrade['specialization_name']
+                            ab_table[upgrade['required_level']]['dmg_all'] = '{{{{Spec|{spec}|{amount}%}}}}'.format(spec=specname, amount=effect['amount'])
+                        else:
+                            ab_table[upgrade['required_level']]['dmg_all'] = effect['amount'] + '%'
                 # If Gold Mult
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'gold_multiplier_mult':
-                    # print('ifgoldX')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['GoldFind'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'gold_multiplier_mult':
+                        # print('ifgoldX')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['GoldFind'] = effect['amount'] + '%'
                 # If health
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'health_add':
-                    # print('health')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    # if 'tanking' in hero['tags']:
-                    # ab_table[upgrade['required_level']]['Health'] = ' +' + effect['amount']
-                    ###################print(effect)
-                    ###################print(upgrade)
-                    spec = None
-                    for _upgrade in __upgrades:
-                        # print(upgrade['required_upgrade_id'], _upgrade['id'])
-                        if upgrade['required_upgrade_id'] == _upgrade['id']:
-                            spec = _upgrade['specialization_name']
-                    _amount = effect['amount']
-                    if isinstance(ab_table[upgrade['required_level']], list):
-                        temp['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
-                        ab_table[upgrade['required_level']].append(temp)
-                    elif not 'Health' in ab_table[upgrade['required_level']]:
-                        # ab_table[upgrade['required_level']]['Health'] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=spec, amount=_amount)
-                        if spec is None:
-                            ab_table[upgrade['required_level']]['Health'] = ' +{amount}'.format(amount=_amount)
-                        else:
-                            ab_table[upgrade['required_level']]['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
-                    else:
-                        temp = ab_table[upgrade['required_level']]
-                        ab_table[upgrade['required_level']] = []
-                        ab_table[upgrade['required_level']].append(temp)
-                        temp2 = {}
-                        # temp2['Health'] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=spec, amount=_amount)
-                        temp2['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
-                        ab_table[upgrade['required_level']].append(temp2)
-                # If spec upgrade
-                effect = None
-                effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_upgrade':
-                    # print('spec upgrade')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    _unit = effect['unit'] if 'unit' in effect else ''
-                    _amount = effect['amount'] + _unit
-                    if 'specialization_name' in upgrade:
-                        _spec = upgrade['specialization_name']
+                if effect:
+                    if effect['key'] == 'health_add':
+                        # print('health')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        # if 'tanking' in hero['tags']:
+                        # ab_table[upgrade['required_level']]['Health'] = ' +' + effect['amount']
+                        ###################print(effect)
+                        ###################print(upgrade)
+                        spec = None
+                        for _upgrade in __upgrades:
+                            # print(upgrade['required_upgrade_id'], _upgrade['id'])
+                            if upgrade['required_upgrade_id'] == _upgrade['id']:
+                                spec = _upgrade['specialization_name']
+                        _amount = effect['amount']
                         if isinstance(ab_table[upgrade['required_level']], list):
-                            temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
+                            temp['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
                             ab_table[upgrade['required_level']].append(temp)
-                            # print(id_, 'spec_upg', name, upgrade)
-                        elif not effect['name'] in ab_table[upgrade['required_level']]:
-                            ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
-                            # print(id_, 'spec_upg', name, upgrade)
+                        elif not 'Health' in ab_table[upgrade['required_level']]:
+                            # ab_table[upgrade['required_level']]['Health'] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=spec, amount=_amount)
+                            if spec is None:
+                                ab_table[upgrade['required_level']]['Health'] = ' +{amount}'.format(amount=_amount)
+                            else:
+                                ab_table[upgrade['required_level']]['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
                         else:
                             temp = ab_table[upgrade['required_level']]
                             ab_table[upgrade['required_level']] = []
                             ab_table[upgrade['required_level']].append(temp)
                             temp2 = {}
-                            temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
+                            # temp2['Health'] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=spec, amount=_amount)
+                            temp2['Health'] = '{{{{Spec|{spec}|+{amount}}}}}'.format(spec=spec, amount=_amount)
                             ab_table[upgrade['required_level']].append(temp2)
-                            # print(id_, 'spec_upg', name, upgrade)
-                    else:
-                        for _upgrade in __upgrades:
-                            if not _upgrade['required_level'] == 9999:
-                                if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                                    if 'specialization_name' in _upgrade:
-                                        _effect = parse_effect(_upgrade['effect'])
-                                        if _effect['key'] == 'buff_upgrade':
-                                            if not name in ['Catti-brie', 'Hitch']:
-                                                if isinstance(ab_table[upgrade['required_level']], list):
-                                                    temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
-                                                    ab_table[upgrade['required_level']].append(temp)
-                                                    # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
-                                                elif not effect['name'] in ab_table[upgrade['required_level']]:
-                                                    ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
-                                                    # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
-                                                else:
-                                                    temp = ab_table[upgrade['required_level']]
-                                                    ab_table[upgrade['required_level']] = []
-                                                    ab_table[upgrade['required_level']].append(temp)
-                                                    temp2 = {}
-                                                    temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
-                                                    ab_table[upgrade['required_level']].append(temp2)
-                                                    # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                # If spec upgrade
+                effect = None
+                effect = parse_effect(upgrade['effect'])
+                if effect:
+                    if effect['key'] == 'buff_upgrade':
+                        # print('spec upgrade')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        _unit = effect['unit'] if 'unit' in effect else ''
+                        _amount = effect['amount'] + _unit
+                        if 'specialization_name' in upgrade:
+                            _spec = upgrade['specialization_name']
+                            if isinstance(ab_table[upgrade['required_level']], list):
+                                temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
+                                ab_table[upgrade['required_level']].append(temp)
+                                # print(id_, 'spec_upg', name, upgrade)
+                            elif not effect['name'] in ab_table[upgrade['required_level']]:
+                                ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
+                                # print(id_, 'spec_upg', name, upgrade)
+                            else:
+                                temp = ab_table[upgrade['required_level']]
+                                ab_table[upgrade['required_level']] = []
+                                ab_table[upgrade['required_level']].append(temp)
+                                temp2 = {}
+                                temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_spec, amount=_amount)
+                                ab_table[upgrade['required_level']].append(temp2)
+                                # print(id_, 'spec_upg', name, upgrade)
+                        else:
+                            for _upgrade in __upgrades:
+                                if not _upgrade['required_level'] == 9999:
+                                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                                        if 'specialization_name' in _upgrade:
+                                            _effect = parse_effect(_upgrade['effect'])
+                                            if _effect['key'] == 'buff_upgrade':
+                                                if not name in ['Catti-brie', 'Hitch']:
+                                                    if isinstance(ab_table[upgrade['required_level']], list):
+                                                        temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        ab_table[upgrade['required_level']].append(temp)
+                                                        # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    elif not effect['name'] in ab_table[upgrade['required_level']]:
+                                                        ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    else:
+                                                        temp = ab_table[upgrade['required_level']]
+                                                        ab_table[upgrade['required_level']] = []
+                                                        ab_table[upgrade['required_level']].append(temp)
+                                                        temp2 = {}
+                                                        temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        ab_table[upgrade['required_level']].append(temp2)
+                                                        # print(id_, '~~~~~~~~~~~~', name, upgrade, _upgrade, _effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                            elif int(effect['id']) == _upgrade['id']:
+                                                if not name in ['Zorbu', 'Ishi']:
+                                                    if isinstance(ab_table[upgrade['required_level']], list):
+                                                        temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        ab_table[upgrade['required_level']].append(temp)
+                                                        # print(id_, '*************', name, upgrade, _upgrade, effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    elif not effect['name'] in ab_table[upgrade['required_level']]:
+                                                        ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        # print(id_, '*************', name, upgrade, _upgrade, effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    else:
+                                                        temp = ab_table[upgrade['required_level']]
+                                                        ab_table[upgrade['required_level']] = []
+                                                        ab_table[upgrade['required_level']].append(temp)
+                                                        temp2 = {}
+                                                        temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                        ab_table[upgrade['required_level']].append(temp2)
+                                                        # print(id_, '*************', name, upgrade, _upgrade, effect)
+                                                        # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
                                         elif int(effect['id']) == _upgrade['id']:
-                                            if not name in ['Zorbu', 'Ishi']:
+                                            # if name not in ['Gromma']:
+                                                for __upgrade in __upgrades:
+                                                    if not __upgrade['required_level'] == 9999:
+                                                        if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
+                                                            if upgrade['required_upgrade_id'] == __upgrade['id']:
+                                                                specname = __upgrade['specialization_name']
+                                                                # print("I\'m here")
+                                                                # print(specname)
                                                 if isinstance(ab_table[upgrade['required_level']], list):
-                                                    temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                    temp = {}
+                                                    temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
+                                                    # print('before', ab_table[upgrade['required_level']])
                                                     ab_table[upgrade['required_level']].append(temp)
-                                                    # print(id_, '*************', name, upgrade, _upgrade, effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    # print('after', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_if', name, upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t', _upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t\t', effect)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t\t\t', specname)
                                                 elif not effect['name'] in ab_table[upgrade['required_level']]:
-                                                    ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
-                                                    # print(id_, '*************', name, upgrade, _upgrade, effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
+                                                    # print('before', ab_table[upgrade['required_level']])
+                                                    ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
+                                                    # print('after', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_elif', name, upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t', _upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t\t', effect)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t\t\t', specname)
                                                 else:
+                                                    temp = None
                                                     temp = ab_table[upgrade['required_level']]
                                                     ab_table[upgrade['required_level']] = []
                                                     ab_table[upgrade['required_level']].append(temp)
                                                     temp2 = {}
-                                                    temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount)
+                                                    temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
+                                                    # print('before', ab_table[upgrade['required_level']])
                                                     ab_table[upgrade['required_level']].append(temp2)
-                                                    # print(id_, '*************', name, upgrade, _upgrade, effect)
-                                                    # print('{{{{Spec|{spec}|{amount}}}}}'.format(spec=_upgrade['specialization_name'], amount=_amount))
-                                    elif int(effect['id']) == _upgrade['id']:
-                                        # if name not in ['Gromma']:
-                                            for __upgrade in __upgrades:
-                                                if not __upgrade['required_level'] == 9999:
-                                                    if (not upgrade['required_upgrade_id'] == 0) and (not upgrade['required_upgrade_id'] == 9999):
-                                                        if upgrade['required_upgrade_id'] == __upgrade['id']:
-                                                            specname = __upgrade['specialization_name']
-                                                            # print("I\'m here")
-                                                            # print(specname)
+                                                    # print('after', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_else', name, upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t', _upgrade)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t', ab_table[upgrade['required_level']])
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t\t', effect)
+                                                    # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t\t\t', specname)
+                                    elif upgrade['required_upgrade_id'] == 0:
+                                        if int(effect['id']) == _upgrade['id']:
                                             if isinstance(ab_table[upgrade['required_level']], list):
-                                                temp = {}
-                                                temp[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
-                                                # print('before', ab_table[upgrade['required_level']])
+                                                temp[effect['name']] = '{amount}'.format(amount=_amount)
                                                 ab_table[upgrade['required_level']].append(temp)
-                                                # print('after', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_if', name, upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t', _upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t\t', effect)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_if', name, '\t\t\t\t', specname)
+                                                # print(id_, 'onlybuffupg_special_case', name, upgrade)
                                             elif not effect['name'] in ab_table[upgrade['required_level']]:
-                                                # print('before', ab_table[upgrade['required_level']])
-                                                ab_table[upgrade['required_level']][effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
-                                                # print('after', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_elif', name, upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t', _upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t\t', effect)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_elif', name, '\t\t\t\t', specname)
+                                                ab_table[upgrade['required_level']][effect['name']] = '{amount}'.format(amount=_amount)
+                                                # print(id_, 'onlybuffupg_special_case', name, upgrade)
                                             else:
-                                                temp = None
                                                 temp = ab_table[upgrade['required_level']]
                                                 ab_table[upgrade['required_level']] = []
                                                 ab_table[upgrade['required_level']].append(temp)
                                                 temp2 = {}
-                                                temp2[effect['name']] = '{{{{Spec|{spec}|{amount}}}}}'.format(spec=specname, amount=_amount)
-                                                # print('before', ab_table[upgrade['required_level']])
+                                                temp2[effect['name']] = '{amount}'.format(amount=_amount)
                                                 ab_table[upgrade['required_level']].append(temp2)
-                                                # print('after', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_else', name, upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t', _upgrade)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t', ab_table[upgrade['required_level']])
-                                                # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t\t', effect)
-                                                # print(id_, 'onlybuffupg_reqid_nospec_else', name, '\t\t\t\t', specname)
-                                elif upgrade['required_upgrade_id'] == 0:
-                                    if int(effect['id']) == _upgrade['id']:
-                                        if isinstance(ab_table[upgrade['required_level']], list):
-                                            temp[effect['name']] = '{amount}'.format(amount=_amount)
-                                            ab_table[upgrade['required_level']].append(temp)
-                                            # print(id_, 'onlybuffupg_special_case', name, upgrade)
-                                        elif not effect['name'] in ab_table[upgrade['required_level']]:
-                                            ab_table[upgrade['required_level']][effect['name']] = '{amount}'.format(amount=_amount)
-                                            # print(id_, 'onlybuffupg_special_case', name, upgrade)
-                                        else:
-                                            temp = ab_table[upgrade['required_level']]
-                                            ab_table[upgrade['required_level']] = []
-                                            ab_table[upgrade['required_level']].append(temp)
-                                            temp2 = {}
-                                            temp2[effect['name']] = '{amount}'.format(amount=_amount)
-                                            ab_table[upgrade['required_level']].append(temp2)
-                                            # print(id_, 'onlybuffupg_special_case', name, upgrade)
-                                # print('\n')
+                                                # print(id_, 'onlybuffupg_special_case', name, upgrade)
+                                    # print('\n')
 
                 # Buff Ultimate
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_ultimate':
-                    # print('buff ultimate')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['buffUlt'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'buff_ultimate':
+                        # print('buff ultimate')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['buffUlt'] = effect['amount'] + '%'
                 # Increase targets and damage
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'add_attack_nearby_targets':
-                    # print('add_attack_nearby_targets')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['incTarAmt'] = '+' + effect['targets']
-                    ab_table[upgrade['required_level']]['incTarDmg'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'add_attack_nearby_targets':
+                        # print('add_attack_nearby_targets')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['incTarAmt'] = '+' + effect['targets']
+                        ab_table[upgrade['required_level']]['incTarDmg'] = effect['amount'] + '%'
                 # Reduce overwhelm effect
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'reduce_overwhelm_effect':
-                    # print('reduce_overwhelm_effect')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['redOverwhelm'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'reduce_overwhelm_effect':
+                        # print('reduce_overwhelm_effect')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['redOverwhelm'] = effect['amount'] + '%'
                 # Increase AOE Radius
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'increase_aoe_radius':
-                    # print('increase_aoe_radius')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['incAOERad'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'increase_aoe_radius':
+                        # print('increase_aoe_radius')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['incAOERad'] = effect['amount'] + '%'
                 # Increase AOE Radius
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'increase_stun_time':
-                    # print('increase_stun_time')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['incStunTime'] = effect['amount'] + ' sec'
+                if effect:
+                    if effect['key'] == 'increase_stun_time':
+                        # print('increase_stun_time')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['incStunTime'] = effect['amount'] + ' sec'
                 # Buff Crit Chance
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_crit_chance':
-                    # print('buff_crit_chance')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    # print(ab_table[upgrade['required_level']])
-                    # ab_table[upgrade['required_level']]['CritChance'] = effect['amount']
-                    if isinstance(ab_table[upgrade['required_level']], list):
-                        temp = {}
-                        temp['CritChance'] = effect['amount']
-                        ab_table[upgrade['required_level']].append(temp)
-                    elif not 'abTitle' in ab_table[upgrade['required_level']]:
-                        ab_table[upgrade['required_level']]['CritChance'] = effect['amount']
-                    else:
-                        temp = ab_table[upgrade['required_level']]
-                        ab_table[upgrade['required_level']] = []
-                        ab_table[upgrade['required_level']].append(temp)
-                        temp2 = {}
-                        temp2['CritChance'] = effect['amount']
-                        ab_table[upgrade['required_level']].append(temp2)
+                if effect:
+                    if effect['key'] == 'buff_crit_chance':
+                        # print('buff_crit_chance')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        # print(ab_table[upgrade['required_level']])
+                        # ab_table[upgrade['required_level']]['CritChance'] = effect['amount']
+                        if isinstance(ab_table[upgrade['required_level']], list):
+                            temp = {}
+                            temp['CritChance'] = effect['amount']
+                            ab_table[upgrade['required_level']].append(temp)
+                        elif not 'abTitle' in ab_table[upgrade['required_level']]:
+                            ab_table[upgrade['required_level']]['CritChance'] = effect['amount']
+                        else:
+                            temp = ab_table[upgrade['required_level']]
+                            ab_table[upgrade['required_level']] = []
+                            ab_table[upgrade['required_level']].append(temp)
+                            temp2 = {}
+                            temp2['CritChance'] = effect['amount']
+                            ab_table[upgrade['required_level']].append(temp2)
                 # Buff Extra attack chance
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_binwin_multi_attack_chance':
-                    # print('buff_binwin_multi_attack_chance')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']]['ExtraAtkChance'] = effect['amount']
+                if effect:
+                    if effect['key'] == 'buff_binwin_multi_attack_chance':
+                        # print('buff_binwin_multi_attack_chance')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']]['ExtraAtkChance'] = effect['amount']
                 # Buff Upgrade base stack
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_upgrade_base_stack':
-                    # print('buff_upgrade_base_stack')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    # ab_table[upgrade['required_level']
-                    #          ]['buff_upgrade_base_stack'] = effect['amount']
-                    ab_table[upgrade['required_level']]['buff_upgrade_base_stack'] = effect['amount']
+                if effect:
+                    if effect['key'] == 'buff_upgrade_base_stack':
+                        # print('buff_upgrade_base_stack')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        # ab_table[upgrade['required_level']
+                        #          ]['buff_upgrade_base_stack'] = effect['amount']
+                        ab_table[upgrade['required_level']]['buff_upgrade_base_stack'] = effect['amount']
                 # buff_aila_ult_bonus_dmg
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'buff_aila_ult_bonus_dmg':
-                    # print('buff_aila_ult_bonus_dmg')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']
-                             ]['buffUlt'] = effect['amount'] + '%'
+                if effect:
+                    if effect['key'] == 'buff_aila_ult_bonus_dmg':
+                        # print('buff_aila_ult_bonus_dmg')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']
+                                 ]['buffUlt'] = effect['amount'] + '%'
                 # Calliope College of Lore
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] == 'temporary_hp_cooldown_reduce':
-                    # print('buff_aila_ult_bonus_dmg')
-                    if not upgrade['required_level'] in ab_table:
-                        ab_table[upgrade['required_level']] = {}
-                    ab_table[upgrade['required_level']
-                             ]['tempHPCDred'] = effect['amount'] + ' secs'
+                if effect:
+                    if effect['key'] == 'temporary_hp_cooldown_reduce':
+                        # print('buff_aila_ult_bonus_dmg')
+                        if not upgrade['required_level'] in ab_table:
+                            ab_table[upgrade['required_level']] = {}
+                        ab_table[upgrade['required_level']
+                                 ]['tempHPCDred'] = effect['amount'] + ' secs'
                 # Do Nothing
                 effect = None
                 effect = parse_effect(upgrade['effect'])
-                if effect['key'] in [
-                    # 'owner_killing_blow_gold_bonus',
-                    # 'increase_num_unique_hits',
-                    'buff_chance_attack_miss',
-                    'buff_attack_stun_chance',
-                    'reduce_hordesperson_drops',
-                    'add_sneak_attack_hit',
-                    'reduce_storm_aura_seconds',
-                ]:
-                    pass
+                if effect:
+                    if effect['key'] in [
+                        # 'owner_killing_blow_gold_bonus',
+                        # 'increase_num_unique_hits',
+                        'buff_chance_attack_miss',
+                        'buff_attack_stun_chance',
+                        'reduce_hordesperson_drops',
+                        'add_sneak_attack_hit',
+                        'reduce_storm_aura_seconds',
+                    ]:
+                        pass
 
         if PRINT_TABLE is True:
             pprint(ab_table)
@@ -2157,7 +2580,7 @@ for hero in js_hero:
                             ability_description=listitem['abTitle'],
                         )
             elif ('unlockAbility' in ab_table[entry]) and (not 'unlockSpec' in ab_table[entry]):
-                # print(ab_table[entry])
+                # pprint(ab_table)
                 gained_abilities += gained_abilities_template.format(
                     ability_name=ab_table[entry]['abName'],
                     ability_description=ab_table[entry]['abTitle'],
@@ -2298,6 +2721,38 @@ for hero in js_hero:
                 spec_desc_6=spec_desc_6,
                 spec_7=spec_7,
                 spec_desc_7=spec_desc_7,
+                gained_abilities=gained_abilities,
+            )
+        elif name == 'Wulfgar':
+            abilities = abilities.format(
+                a_base=a_base,
+                a_base_desc=a_base_desc,
+                a_ult=a_ult,
+                a_ult_desc=a_ult_desc,
+                spec_1=spec_1,
+                spec_desc_1=spec_desc_1,
+                spec_2=spec_2,
+                spec_desc_2=spec_desc_2,
+                spec_3=spec_3,
+                spec_desc_3=spec_desc_3,
+                gained_abilities=gained_abilities,
+            )
+        elif name == 'Walnut':
+            abilities = abilities.format(
+                a_base=a_base,
+                a_base_desc=a_base_desc,
+                a_ult=a_ult,
+                a_ult_desc=a_ult_desc,
+                spec_1=spec_1,
+                spec_desc_1=spec_desc_1,
+                spec_2=spec_2,
+                spec_desc_2=spec_desc_2,
+                spec_3=spec_3,
+                spec_desc_3=spec_desc_3,
+                spec_4=spec_4,
+                spec_desc_4=spec_desc_4,
+                spec_5=spec_5,
+                spec_desc_5=spec_desc_5,
                 gained_abilities=gained_abilities,
             )
         else:
@@ -2538,7 +2993,7 @@ for hero in js_hero:
                         didit = True
                         row += '<abbr title="{ability_title}">{ability_name}</abbr> or '.format(
                             ability_name=listitem['abName'],
-                            ability_title=listitem['abTitle'] if 'abTitle' in listitem else '',
+                            ability_title=listitem['abTitle'].replace('"', "'") if 'abTitle' in listitem else '',
                             colspan=colspan
                         )
                 if didit:
@@ -2757,15 +3212,15 @@ for hero in js_hero:
         equipment = '''{| class="wikitable"
 !Slot
 !Description
-!<span style="color: orange>Common</span>
-!<span style="color: green>Uncommon</span>
-!<span style="color: blue>Rare</span>
-!<span style="color: purple>Epic</span>
-!<span style="color: silver>Shiny</span> <span style="color: orange>Common</span>
-!<span style="color: silver>Shiny</span> <span style="color: green>Uncommon</span>
-!<span style="color: silver>Shiny</span> <span style="color: blue>Rare</span>
-!<span style="color: silver>Shiny</span> <span style="color: purple>Epic</span>
-!<span style="color: gold>Golden</span> <span style="color: purple>Epic</span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 0px; padding: inherit;"><span style="color: #ffffff>Common</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 0px; padding: inherit;"><span style="color: #53e105>Uncommon</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 0px; padding: inherit;"><span style="color: #2a8cfa>Rare</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 0px; padding: inherit;"><span style="color: #a200ff>Epic</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 1px; padding: inherit;"><span style="color: #bad6e8>Shiny</span> <span style="color: #ffffff>Common</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 1px; padding: inherit;"><span style="color: #bad6e8>Shiny</span> <span style="color: #53e105>Uncommon</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 1px; padding: inherit;"><span style="color: #bad6e8>Shiny</span> <span style="color: #2a8cfa>Rare</span></span>
+!<span style="background:#202020; border: #bad6e8; border-style: solid; border-width: 1px; padding: inherit;"><span style="color: #bad6e8>Shiny</span> <span style="color: #a200ff>Epic</span></span>
+!<span style="background:#202020; border: #fccc3b; border-style: solid; border-width: 1px; padding: inherit;"><span style="color: #fccc3b>Golden</span> <span style="color: #a200ff>Epic</span></span>
 |-
 |1
 |''' + eq_table['slot1']['desc'] + '''
@@ -2911,6 +3366,14 @@ Binwin is in the webcomic [http://tabletitans.com/binwins-minions Binwin's Minio
             trivia += '''
 Donaar is played by Ryan Hartman.
 '''
+        elif name == 'Spurt':
+            trivia += '''
+Spurt is based on Dungeons & Dragons designer Chris Perkins' guest character on the live-stream show [https://www.youtube.com/channel/UCpXBGqwsBkpvcYjsJBQ7LEQ Critical Role].
+'''
+        elif name == 'Vlahnya':
+            trivia += '''
+Vlahnya is based on [https://www.mazearcana.com/ Maze Arcana] dungeon master and former Community Manager for Dungeons & Dragons, Satine Phoenix.
+'''
 
         # Media
         media = ''
@@ -2925,12 +3388,13 @@ Donaar is played by Ryan Hartman.
             )
 
         # Stubs
-        # if name == 'Aila':
+        # if name == 'Spurt':
         #     champ_str = '{{{{stub}}}}' + champ_str
 
         final_str = champ_str.format(
             id_=id_,
             name=name,
+            skin=skin,
             class_=class_,
             race=race,
             age=age,
@@ -2963,52 +3427,53 @@ Donaar is played by Ryan Hartman.
         )
 
         with open('output/{filename}.txt'.format(filename=name), 'w') as f:
-            f.write(final_str)
+            f.write(html.unescape(final_str))
 
+        if COMPARE:
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            if not os.path.isdir(os.path.join(dir_path, 'output')):
+                os.makedirs(os.path.join(dir_path, 'output'))
+            main_file = os.path.join(dir_path, 'output/{filename}.txt'.format(filename=name))
+            posted_file = os.path.join(dir_path, 'output/posted/{filename}.txt'.format(filename=name))
+            try:
+                result = filecmp.cmp(main_file, posted_file, shallow=False)
+            except FileNotFoundError as e:
+                print('{name}: No source found'.format(name=name))
+                result = None
 
-        if API:
-            COMPARE_PARAMS = {
-                'action': 'compare',
-                'fromtitle': name,
-                'totext': final_str,
-                'prop': 'diff|diffsize|title'
-            }
-
-            R1 = instance.post(data=COMPARE_PARAMS)
-            # print(R1.status_code)
-            # print(R1.url)
-            resjs = R1.json()
-
-            if 'compare' in resjs:
-                if resjs['compare']['diffsize'] == 0:
-                    print('{name}: No changes'.format(name=name))
-                else:
-                    print('{name}: Changes detected!'.format(name=name))
-                    if SHOW_CHANGES:
-                        print('\nDIFF:\t\t(&#160; is &nbsp;) ')
-                        print(resjs['compare']['body'])
-                    if POST:
-                        if _summary is None:
-                            _summary = input('Enter change summary: ')
-                        EDIT_PARAMS = {
-                            'action': 'edit',
-                            'title': name,
-                            'text': final_str,
-                            'bot': '1',
-                            'nocreate': '1',
-                            'summary': _summary
-                        }
-                        # pprint({key: value for key, value in EDIT_PARAMS.items() if key is not 'text'})
-                        print('{name}: Posting...'.format(name=name))
-                        R2 = instance.post(data=EDIT_PARAMS)
-                        if (R2.status_code == 200) or (R2.status_code == '200'):
-                            print('{name}: Success!'.format(name=name))
-                        else:
-                            print('{name}: FAIL!'.format(name=name))
-                        # pprint(R2.json())
+            if (result is not None) and (result == True):
+                print('{name}: No changes'.format(name=name))
             else:
-                pprint(resjs)
+                print('{name}: Changes detected!'.format(name=name))
+                if SHOW_CHANGES:
+                    result = subprocess.run(['git', 'diff', '--no-index', posted_file, main_file])
+                if POST:
+                    if _summary is None:
+                        _summary = input('Enter change summary: ')
+                    EDIT_PARAMS = {
+                        'action': 'edit',
+                        'title': name,
+                        'text': final_str,
+                        'bot': '1',
+                        'summary': _summary
+                        # 'nocreate': '1',
+                    }
+                    print('{name}: Posting...'.format(name=name))
+                    R2 = instance.post(data=EDIT_PARAMS)
+                    if R2.status_code == 200:
+                        if 'error' not in R2.json():
+                            print('{name}: Success!'.format(name=name))
+                            with open('output/posted/{filename}.txt'.format(filename=name), 'w') as g:
+                                g.write(final_str)
+                        else:
+                            print('{name}: FAIL! Error Message: {error}'.format(name=name, error=R2.json()['error']['info']))
+                    # if R2.status_code == 200:
+                    #     print('{name}: Success!'.format(name=name))
+                    #     with open('output/posted/{filename}.txt'.format(filename=name), 'w') as g:
+                    #         g.write(final_str)
+                    else:
+                        print('{name}: FAIL!'.format(name=name))
 
-        # if id_ == 31:
-        #     exit()
+        if id_ == 32:
+            exit()
         # break

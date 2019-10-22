@@ -5,17 +5,28 @@ from collections import OrderedDict
 import math
 from decimal import Decimal
 from idlechampaccount import ICAccount
+import subprocess
+import filecmp
+import os
 
-API = True
-POST = True
+
+COMPARE = True
+POST = False
+REDOWNLOAD = False
 SHOW_CHANGES = False
 _summary = None
 
-if API:
+if POST:
     instance = ICAccount()
     instance.login()
 
-filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+# filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+filename = '/tmp/cached_definitions.json'
+if REDOWNLOAD or not os.path.isfile(filename):
+    result = requests.get('http://master.idlechampions.com/~idledragons/post.php?call=getdefinitions')
+    with open(filename, 'w') as f:
+        if result.status_code == 200:
+            f.write(result.text)
 
 monster_filename = 'json/monster_defines.json'
 
@@ -56,71 +67,119 @@ The \'\'\'Bestiary\'\'\' for [[Idle Champions of the Forgotten Realms]].
 Idle Champions features a wide array of races from the D&D universe as opponents, such as [[Orc]]s, [[Hobgoblin]]s and [[Gelatinous Cube]]s.
 
 ==List Of Creatures==
-{creature_list}
+{creature_list_text}
+
+==List of Types==
+__type_list_text__
 
 ==See also==
 [[Bosses]]
 
-{{{{Navbox-IdleChampions}}}}'''
+__Navbox-IdleChampions__'''
 
-# Stub status
-page_text = '{{{{stub}}}}' + page_text
+for mon in js_mon:
+    if mon['name'] == 'Jarlaxle':
+        temp = mon
+        js_mon.remove(mon)
+        temp['name'] = 'Jarlaxle (Monster)'
+        js_mon.append(temp)
 
 
+__js_mon = sorted(js_mon, key=lambda x: x['id'])
+type_list = set()
 taglist = {}
-for rule in js_game_rule:
-    if rule['rule_name'] == 'enemy_hover_tags':
-        for tag in rule['rule']['tags']:
-            taglist.update({tag: set()})
+types = ['boss',
+        'flying',
+        'item',
+        'melee',
+        'ranged',
+        'relentless',
+        'spawner',
+        'static']
 
-# pprint(taglist)
+for monster in __js_mon:
+    for tag in monster['tags']:
+        if tag not in taglist:
+            type_list.add(tag)
 
-for monster in js_mon:
+for item in type_list:
+    # if item not in types:
+        taglist.update({item: set()})
+
+# print(taglist)
+
+for monster in __js_mon:
     for tag in monster['tags']:
         if tag in taglist:
             taglist[tag].add(monster['name'])
 
 # pprint(taglist)
+# pprint(type_list)
 
 creature_list = ''
-for mon_type in taglist:
-    creature_list += '[[{mon_type}]]\n'.format(mon_type=mon_type.capitalize())
-    creatures = ''
-    # print(mon_type)
-    # pprint(sorted(taglist[mon_type], key=lambda x: x['name']))
-    for mob in sorted(taglist[mon_type]):
-        creatures += '[[{mob}]], '.format(mob=mob)
-    creatures = ': ' + creatures
-    creatures = creatures[:-2]
-    creatures += '\n'
-    creature_list += creatures
+for mon_type in sorted(taglist):
+    if mon_type not in types:
+        creature_list += '[[{mon_type}]]\n'.format(mon_type=mon_type.capitalize())
+        creatures = ''
+        # print(mon_type)
+        # pprint(sorted(taglist[mon_type], key=lambda x: x['name']))
+        for mob in sorted(taglist[mon_type]):
+            creatures += '[[{mob}]], '.format(mob=mob)
+        creatures = ': ' + creatures
+        creatures = creatures[:-2]
+        creatures += '\n'
+        creature_list += creatures
 
-page_text = page_text.format(creature_list=creature_list)
+page_text = page_text.format(creature_list_text=creature_list)
+
+page_text = page_text.replace('__type_list_text__', '{type_list_text}')
+
+# print(page_text)
+
+list_of_types = ''
+for mon_type in sorted(taglist):
+    if mon_type in types:
+        list_of_types += '[[{mon_type}]]\n'.format(mon_type=mon_type.capitalize())
+        creatures = ''
+        # print(mon_type)
+        # pprint(sorted(taglist[mon_type], key=lambda x: x['name']))
+        for mob in sorted(taglist[mon_type]):
+            creatures += '[[{mob}]], '.format(mob=mob)
+        creatures = ': ' + creatures
+        creatures = creatures[:-2]
+        creatures += '\n'
+        list_of_types += creatures
+
+page_text = page_text.format(type_list_text=list_of_types)
+
+# print(page_text)
+
+page_text = page_text.replace('__Navbox-IdleChampions__', '{{Navbox-IdleChampions}}')
+# Stub status
+page_text = '{{stub}}' + page_text
 
 with open('output/bestiary.txt', 'w') as f:
     f.write(page_text)
 
-if API:
-    COMPARE_PARAMS = {
-        'action': 'compare',
-        'fromtitle': 'Bestiary',
-        'totext': page_text,
-        'prop': 'diff|diffsize|title'
-    }
+if COMPARE:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if not os.path.isdir(os.path.join(dir_path, 'output')):
+        os.makedirs(os.path.join(dir_path, 'output'))
+    main_file = os.path.join(dir_path, 'output/bestiary.txt')
+    posted_file = os.path.join(dir_path, 'output/posted/bestiary.txt')
+    try:
+        result = filecmp.cmp(main_file, posted_file, shallow=False)
+    except FileNotFoundError as e:
+        print('No source found')
+        result = None
 
-    R1 = instance.post(data=COMPARE_PARAMS)
-    # print(R1.status_code)
-    # print(R1.url)
-    resjs = R1.json()
-
-    if 'compare' in resjs:
-        if resjs['compare']['diffsize'] == 0:
-            print('Bestiary: No changes')
+    if result is not None:
+        if result:
+            print('No changes')
         else:
-            print('Bestiary: Changes detected!')
+            print('Changes detected!')
             if SHOW_CHANGES:
-                print('\nDIFF:\t\t(&#160; is &nbsp;) ')
-                print(resjs['compare']['body'])
+                result = subprocess.run(['git', 'diff', '--no-index', posted_file, main_file])
             if POST:
                 if _summary is None:
                     _summary = input('Enter change summary: ')
@@ -132,13 +191,11 @@ if API:
                     'nocreate': '1',
                     'summary': _summary
                 }
-                # pprint({key: value for key, value in EDIT_PARAMS.items() if key is not 'text'})
-                print('Bestiary: Posting...')
+                print('Posting...')
                 R2 = instance.post(data=EDIT_PARAMS)
-                if (R2.status_code == 200) or (R2.status_code == '200'):
-                    print('Bestiary: Success!')
+                if R2.status_code == 200:
+                    print('Success!')
+                    with open('output/posted/bestiary.txt', 'w') as g:
+                        g.write(page_text)
                 else:
-                    print('Bestiary: FAIL!')
-                # pprint(R2.json())
-    else:
-        pprint(resjs)
+                    print('FAIL!')

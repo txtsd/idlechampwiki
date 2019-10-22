@@ -8,7 +8,7 @@ filelist = glob.glob(directory + '*')
 
 for file in filelist:
     filename_segments = file.split('.')
-    if (not 'json' in filename_segments) and (not 'txt' in filename_segments):
+    if (not 'json' in filename_segments) and (not 'txt' in filename_segments) and (not 'png' in filename_segments):
         with open(file, 'rb') as f:
             print('opened', file)
             loaded_file = f.read()

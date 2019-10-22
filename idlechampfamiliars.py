@@ -2,17 +2,26 @@ import json
 from decimal import Decimal
 from idlechampaccount import ICAccount
 from pprint import pprint
+import os
+import filecmp
 
-API = True
-POST = True
-SHOW_CHANGES = False
+
+COMPARE = True
+POST = False
+REDOWNLOAD = False
 _summary = None
 
-if API:
+if POST:
     instance = ICAccount()
     instance.login()
 
-filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+# filename = '/home/txtsd/.local/share/Steam/steamapps/common/IdleChampions/IdleDragons_Data/StreamingAssets/downloaded_files/cached_definitions.json'
+filename = '/tmp/cached_definitions.json'
+if REDOWNLOAD or not os.path.isfile(filename):
+    result = requests.get('http://master.idlechampions.com/~idledragons/post.php?call=getdefinitions')
+    with open(filename, 'w') as f:
+        if result.status_code == 200:
+            f.write(result.text)
 
 with open(filename) as f:
     file = f.read()
@@ -115,27 +124,23 @@ page_text = page_text.format(familiar_list=familiar_text)
 with open('output/familiars.txt', 'w') as f:
     f.write(page_text)
 
-if API:
-    COMPARE_PARAMS = {
-        'action': 'compare',
-        'fromtitle': 'Familiars',
-        'totext': page_text,
-        'prop': 'diff|diffsize|title'
-    }
+if COMPARE:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if not os.path.isdir(os.path.join(dir_path, 'output')):
+        os.makedirs(os.path.join(dir_path, 'output'))
+    main_file = os.path.join(dir_path, 'output/familiars.txt')
+    posted_file = os.path.join(dir_path, 'output/posted/familiars.txt')
+    try:
+        result = filecmp.cmp(main_file, posted_file, shallow=False)
+    except FileNotFoundError as e:
+        print('No source found')
+        result = None
 
-    R1 = instance.post(data=COMPARE_PARAMS)
-    # print(R1.status_code)
-    # print(R1.url)
-    resjs = R1.json()
-
-    if 'compare' in resjs:
-        if resjs['compare']['diffsize'] == 0:
-            print('Familiars: No changes')
+    if result is not None:
+        if result:
+            print('No changes')
         else:
-            print('Familiars: Changes detected!')
-            if SHOW_CHANGES:
-                print('\nDIFF:\t\t(&#160; is &nbsp;) ')
-                print(resjs['compare']['body'])
+            print('Changes detected!')
             if POST:
                 if _summary is None:
                     _summary = input('Enter change summary: ')
@@ -147,13 +152,11 @@ if API:
                     'nocreate': '1',
                     'summary': _summary
                 }
-                # pprint({key: value for key, value in EDIT_PARAMS.items() if key is not 'text'})
-                print('Familiars: Posting...')
+                print('Posting...')
                 R2 = instance.post(data=EDIT_PARAMS)
-                if (R2.status_code == 200) or (R2.status_code == '200'):
-                    print('Familiars: Success!')
+                if R2.status_code == 200:
+                    print('Success!')
+                    with open('output/posted/familiars.txt', 'w') as g:
+                        g.write(page_text)
                 else:
-                    print('Familiars: FAIL!')
-                # pprint(R2.json())
-    else:
-        pprint(resjs)
+                    print('FAIL!')
