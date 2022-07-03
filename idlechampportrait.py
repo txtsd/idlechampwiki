@@ -69,7 +69,7 @@ LICENSE = '''
 {{Copyright game}}'''
 
 for hero in js_hero:
-    if not re.search('^E\d', hero['name']):
+    if not re.search('^E\d', hero['name']) and not len(hero['name']) < 2:
         imgid = hero['portrait_graphic_id']
         for gfx in js_graphic:
             if imgid == gfx['id']:
