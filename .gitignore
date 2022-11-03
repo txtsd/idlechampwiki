@@ -2,3 +2,4 @@ images/
 output/
 __pycache__/
 json/
+.idea/
